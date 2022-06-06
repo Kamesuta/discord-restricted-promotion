@@ -214,6 +214,15 @@ impl EventHandler for Handler {
             return; // チャンネルが違う
         }
 
+        // 無視するロールを持っているかどうかを検証
+        let manage_channels = msg
+            .member
+            .as_ref()
+            .and_then(|member| member.has_role(&ctx.http, self.app_config.discord.manage_channels));
+        if manage_channels.unwrap_or(false) {
+            return;
+        }
+
         // 招待リンクをパース
         let finder = InviteFinder::new(msg.content.as_str());
 
@@ -243,6 +252,8 @@ impl EventHandler for Handler {
                 return;
             }
         };
+
+        // #TODO 過去ログに同じリンクがないかを検証
 
         // 一定時間後に警告メッセージを削除
         if let Err(why) = self.wait_and_delete_message(&ctx, &msg, &replies).await {
