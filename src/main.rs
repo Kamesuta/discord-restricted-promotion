@@ -9,6 +9,7 @@ use std::{env, error::Error};
 use serenity::framework::standard::StandardFramework;
 use serenity::prelude::*;
 
+/// メイン処理
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // フレームワークを初期化

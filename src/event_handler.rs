@@ -9,12 +9,14 @@ use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
 
+/// イベント受信リスナー
 pub struct Handler {
+    /// 設定
     pub app_config: AppConfig,
 }
 
 impl Handler {
-    // 警告を一定時間後に削除する
+    /// 警告を一定時間後に削除する
     async fn wait_and_delete_message(
         &self,
         ctx: &Context,
@@ -39,7 +41,7 @@ impl Handler {
         Ok(())
     }
 
-    // 招待コードを検証する
+    /// 招待コードを検証する
     async fn check_invite_links<'t>(
         &self,
         ctx: &Context,
@@ -88,7 +90,7 @@ impl Handler {
         Ok(Some(reply))
     }
 
-    // 説明文が書かれているかどうかを検証する
+    /// 説明文が書かれているかどうかを検証する
     async fn check_invite_message<'t>(
         &self,
         ctx: &Context,
@@ -131,6 +133,7 @@ impl Handler {
 
 #[async_trait]
 impl EventHandler for Handler {
+    /// メッセージが送信された時に呼び出される
     async fn message(&self, ctx: Context, msg: Message) {
         // Botの投稿を無視
         if msg.author.bot {
