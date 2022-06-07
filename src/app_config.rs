@@ -1,12 +1,13 @@
 use config::Config;
 use std::error::Error;
+use serenity::model::id::{RoleId, ChannelId};
 
 #[derive(Debug, Default, serde::Deserialize, PartialEq)]
 pub struct DiscordConfig {
-    pub channels: Vec<String>,
+    pub channels: Vec<ChannelId>,
     pub alert_sec: u64,
     pub required_message_length: usize,
-    pub ignore_roles: Vec<String>,
+    pub ignore_roles: Vec<RoleId>,
 }
 
 #[derive(Debug, Default, serde::Deserialize, PartialEq)]

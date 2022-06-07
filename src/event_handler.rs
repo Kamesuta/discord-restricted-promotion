@@ -142,19 +142,19 @@ impl EventHandler for Handler {
             .app_config
             .discord
             .channels
-            .contains(&msg.channel_id.to_string())
+            .contains(&msg.channel_id)
         {
             return; // チャンネルが違う
         }
 
         // 無視するロールを持っているかどうかを検証
-        // let manage_channels = msg
-        //     .member
-        //     .as_ref()
-        //     .map(|member| self.app_config.discord.manage_channels.iter().any(|f| member.roles.contains(&ctx.http, f)));
-        // if manage_channels.unwrap_or(false) {
-        //     return;
-        // }
+        let manage_channels = msg
+            .member
+            .as_ref()
+            .map(|member| self.app_config.discord.ignore_roles.iter().any(|f| member.roles.contains(f)));
+        if manage_channels.unwrap_or(false) {
+            return;
+        }
 
         // 招待リンクをパース
         let finder = InviteFinder::new(msg.content.as_str());
