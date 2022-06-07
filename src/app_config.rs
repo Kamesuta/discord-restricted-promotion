@@ -1,6 +1,6 @@
 use config::Config;
+use serenity::model::id::{ChannelId, RoleId};
 use std::error::Error;
-use serenity::model::id::{RoleId, ChannelId};
 
 #[derive(Debug, Default, serde::Deserialize, PartialEq)]
 pub struct DiscordConfig {
@@ -30,4 +30,3 @@ impl AppConfig {
         Ok(app_config)
     }
 }
-

@@ -138,20 +138,18 @@ impl EventHandler for Handler {
         }
 
         // コンフィグで指定されたチャンネルのメッセージのみ処理する
-        if !self
-            .app_config
-            .discord
-            .channels
-            .contains(&msg.channel_id)
-        {
+        if !self.app_config.discord.channels.contains(&msg.channel_id) {
             return; // チャンネルが違う
         }
 
         // 無視するロールを持っているかどうかを検証
-        let manage_channels = msg
-            .member
-            .as_ref()
-            .map(|member| self.app_config.discord.ignore_roles.iter().any(|f| member.roles.contains(f)));
+        let manage_channels = msg.member.as_ref().map(|member| {
+            self.app_config
+                .discord
+                .ignore_roles
+                .iter()
+                .any(|f| member.roles.contains(f))
+        });
         if manage_channels.unwrap_or(false) {
             return;
         }

@@ -1,10 +1,10 @@
-mod invite_finder;
 mod app_config;
 mod event_handler;
+mod invite_finder;
 
-use std::{env, error::Error};
 use app_config::AppConfig;
 use event_handler::Handler;
+use std::{env, error::Error};
 
 use serenity::framework::standard::StandardFramework;
 use serenity::prelude::*;
