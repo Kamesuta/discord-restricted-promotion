@@ -1,28 +1,16 @@
 mod invite_finder;
+mod app_config;
 
 use chrono_tz::Tz::Japan;
-use config::Config;
 use std::{env, error::Error};
 use tokio::time::{sleep, Duration};
 use invite_finder::InviteFinder;
+use app_config::AppConfig;
 
 use serenity::async_trait;
 use serenity::framework::standard::StandardFramework;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
-
-#[derive(Debug, Default, serde::Deserialize, PartialEq)]
-struct DiscordConfig {
-    channels: Vec<String>,
-    alert_sec: u64,
-    required_message_length: usize,
-    ignore_roles: Vec<String>,
-}
-
-#[derive(Debug, Default, serde::Deserialize, PartialEq)]
-struct AppConfig {
-    discord: DiscordConfig,
-}
 
 struct Handler {
     app_config: AppConfig,
@@ -216,20 +204,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let framework = StandardFramework::new().configure(|c| c.prefix("~"));
 
     // 設定ファイルを読み込む
-    let config = Config::builder()
-        // Add in `./Settings.toml`
-        .add_source(config::File::with_name("config.toml"))
-        // Add in settings from the environment (with a prefix of APP)
-        // Eg.. `APP_DEBUG=1 ./target/app` would set the `debug` key
-        .add_source(config::Environment::with_prefix("APP"))
-        .build()
-        .unwrap();
-    // 設定ファイルをパース
-    let app_config = match config.try_deserialize::<AppConfig>() {
+    let app_config = match AppConfig::load_config() {
         Ok(config) => config,
         Err(why) => {
-            println!("設定ファイルのパースに失敗: {}", why);
-            return Err(why.into());
+            println!("設定ファイルの読み込みに失敗: {:?}", why);
+            return Err(why);
         }
     };
 
