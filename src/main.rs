@@ -15,6 +15,7 @@ struct DiscordConfig {
     channels: Vec<String>,
     alert_sec: u64,
     required_message_length: usize,
+    ignore_roles: Vec<String>,
 }
 
 #[derive(Debug, Default, serde::Deserialize, PartialEq)]
@@ -93,6 +94,11 @@ impl Handler {
         msg: &Message,
         replies: &Vec<Message>,
     ) -> Result<(), Box<dyn Error>> {
+        // 警告がない場合は処理を行わない
+        if replies.is_empty() {
+            return Ok(());
+        }
+
         // 一定時間待つ
         sleep(Duration::from_secs(self.app_config.discord.alert_sec)).await;
 
@@ -215,13 +221,13 @@ impl EventHandler for Handler {
         }
 
         // 無視するロールを持っているかどうかを検証
-        let manage_channels = msg
-            .member
-            .as_ref()
-            .and_then(|member| member.has_role(&ctx.http, self.app_config.discord.manage_channels));
-        if manage_channels.unwrap_or(false) {
-            return;
-        }
+        // let manage_channels = msg
+        //     .member
+        //     .as_ref()
+        //     .map(|member| self.app_config.discord.manage_channels.iter().any(|f| member.roles.contains(&ctx.http, f)));
+        // if manage_channels.unwrap_or(false) {
+        //     return;
+        // }
 
         // 招待リンクをパース
         let finder = InviteFinder::new(msg.content.as_str());
