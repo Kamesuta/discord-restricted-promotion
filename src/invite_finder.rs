@@ -1,17 +1,18 @@
 use chrono::prelude::*;
+use futures::future::try_join_all;
 use regex::Regex;
 use serenity::model::id::GuildId;
 use std::error::Error;
 
 /// パース用ギルド情報
-#[derive(Debug, Default, serde::Deserialize, PartialEq)]
+#[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
 pub struct DiscordInviteGuild {
     /// ギルドID
     pub id: GuildId,
 }
 
 /// パース用招待コード
-#[derive(Debug, Default, serde::Deserialize, PartialEq)]
+#[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
 pub struct DiscordInvite {
     /// 有効期限
     pub expires_at: Option<String>,
@@ -20,6 +21,7 @@ pub struct DiscordInvite {
 }
 
 /// 招待リンクの情報
+#[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
 pub struct DiscordInviteLink<'t> {
     /// 招待リンクのURL
     pub invite_link: &'t str,
@@ -59,7 +61,7 @@ impl<'t> InviteFinder<'t> {
 
     /// APIから招待リンクの詳細を取得する
     pub async fn get_invite_list(&self) -> Result<Vec<DiscordInviteLink<'t>>, Box<dyn Error>> {
-        futures::future::try_join_all(self.invite_codes.iter().map(|invite_link| async move {
+        try_join_all(self.invite_codes.iter().map(|invite_link| async move {
             // APIリクエストを構築
             let invite_url = format!(
                 "https://discord.com/api/v10/invites/{}",

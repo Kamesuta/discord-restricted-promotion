@@ -1,7 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use crate::app_config::AppConfig;
 use chrono::Duration;
+use futures::lock::Mutex;
 use rusqlite::{params, Connection, Result};
 use serenity::model::id::{ChannelId, GuildId, MessageId};
 
@@ -57,8 +57,8 @@ impl HistoryLog {
         })
     }
 
-    pub fn insert<'t>(&self, record: &HistoryRecord) -> Result<()> {
-        self.conn.lock().unwrap().execute(
+    pub async fn insert<'t>(&self, record: HistoryRecord) -> Result<()> {
+        self.conn.lock().await.execute(
             "REPLACE INTO history (invite_code, invite_guild_id, channel_id, message_id, timestamp) VALUES (?1, ?2, ?3, ?4 ?5)",
             params!(
                 record.key.invite_code,
@@ -72,13 +72,13 @@ impl HistoryLog {
         Ok(())
     }
 
-    pub fn validate<'t>(
+    pub async fn validate<'t>(
         &self,
         channel_id: &ChannelId,
         key: &HistoryKeyType,
     ) -> Result<Vec<HistoryRecord>> {
         let collect: Vec<HistoryRecord> = {
-            let conn = self.conn.lock().unwrap();
+            let conn = self.conn.lock().await;
             let mut stmt = conn.prepare(
                 "SELECT
                         invite_code,
