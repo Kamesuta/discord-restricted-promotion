@@ -27,7 +27,7 @@ pub struct DiscordInviteLink<'t> {
     pub invite_code: &'t str,
     /// 招待コードの有効期限
     pub expires_at: Option<DateTime<FixedOffset>>,
-    /// 招待コードが有効期限切れかどうか
+    /// 招待コードのギルドID
     pub guild_id: Option<GuildId>,
 }
 

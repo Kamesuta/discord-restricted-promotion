@@ -1,8 +1,10 @@
 use chrono_tz::Tz::Japan;
 use std::error::Error;
+use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
 use crate::app_config::AppConfig;
+use crate::history_log::{HistoryKeyType, HistoryLog};
 use crate::invite_finder::InviteFinder;
 
 use serenity::async_trait;
@@ -12,10 +14,22 @@ use serenity::prelude::*;
 /// イベント受信リスナー
 pub struct Handler {
     /// 設定
-    pub app_config: AppConfig,
+    app_config: AppConfig,
+    /// 履歴
+    history: Arc<Mutex<HistoryLog>>,
 }
 
 impl Handler {
+    /// コンストラクタ
+    pub fn new(
+        app_config: AppConfig,
+    ) -> Result<Self, Box<dyn Error>> {
+        Ok(Self {
+            history: Arc::new(Mutex::new(HistoryLog::new(app_config.clone())?)),
+            app_config,
+        })
+    }
+
     /// 警告を一定時間後に削除する
     async fn wait_and_delete_message(
         &self,
@@ -163,18 +177,6 @@ impl EventHandler for Handler {
         // 警告リプライ
         let mut replies: Vec<Message> = Vec::new();
 
-        // 招待コードを検証
-        match self.check_invite_links(&ctx, &msg, &finder).await {
-            Ok(reply) => match reply {
-                Some(reply) => replies.push(reply),
-                None => (), // 検証に失敗
-            },
-            Err(why) => {
-                println!("招待リンクの検証に失敗: {}", why);
-                return;
-            }
-        };
-
         // メッセージを検証
         match self.check_invite_message(&ctx, &msg, &finder).await {
             Ok(reply) => match reply {
@@ -183,6 +185,43 @@ impl EventHandler for Handler {
             },
             Err(why) => {
                 println!("検証に失敗: {}", why);
+                return;
+            }
+        };
+
+        // 過去ログに同じリンクがないかを検証
+        //self.history.lock().await.insert(msg.content.clone());
+        let history_log = self.history.lock().await;
+        let invites = finder.invite_codes.iter().filter_map(|invite_link| {
+            let records = match history_log.validate(
+                &msg.channel_id,
+                &HistoryKeyType::InviteCode(invite_link.invite_link.to_string()),
+            ) {
+                Ok(records) if !records.is_empty() => records,
+                _ => return None,
+            };
+            // let message_ids = records
+            //     .iter()
+            //     .map(|f| f.message_id)
+            //     .map(|id| msg.channel_id.message(ctx, id));
+            // let messages = futures::future::try_join_all(message_ids).await;
+            // let messages = messages.iter().flat_map(|f| f);
+
+            // !records.is_empty()
+            Some((invite_link, records))
+        });
+        // if invites.any(|f| f.1.is_empty()) {
+        //     return;
+        // }
+
+        // 招待コードを検証
+        match self.check_invite_links(&ctx, &msg, &finder).await {
+            Ok(reply) => match reply {
+                Some(reply) => replies.push(reply),
+                None => (), // 検証に失敗
+            },
+            Err(why) => {
+                println!("招待リンクの検証に失敗: {}", why);
                 return;
             }
         };

@@ -3,7 +3,7 @@ use serenity::model::id::{ChannelId, RoleId};
 use std::error::Error;
 
 /// Discordの設定
-#[derive(Debug, Default, serde::Deserialize, PartialEq)]
+#[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
 pub struct DiscordConfig {
     /// Botが動作するチャンネルID
     pub channels: Vec<ChannelId>,
@@ -16,7 +16,7 @@ pub struct DiscordConfig {
 }
 
 /// アプリケーションの設定
-#[derive(Debug, Default, serde::Deserialize, PartialEq)]
+#[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
 pub struct AppConfig {
     /// Discordの設定
     pub discord: DiscordConfig,

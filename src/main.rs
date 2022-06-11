@@ -1,6 +1,7 @@
 mod app_config;
 mod event_handler;
 mod invite_finder;
+mod history_log;
 
 use app_config::AppConfig;
 use event_handler::Handler;
@@ -25,7 +26,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     // イベント受信リスナーを構築
-    let handler = Handler { app_config };
+    let handler = Handler::new(app_config)?;
 
     // 環境変数のトークンを使用してDiscord APIを初期化
     let token = env::var("DISCORD_TOKEN").expect("token");
