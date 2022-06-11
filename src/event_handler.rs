@@ -21,11 +21,11 @@ pub struct Handler {
 
 impl Handler {
     /// コンストラクタ
-    pub fn new(
-        app_config: AppConfig,
-    ) -> Result<Self, Box<dyn Error>> {
+    pub fn new(app_config: AppConfig) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
-            history: Arc::new(Mutex::new(HistoryLog::new(app_config.clone())?)),
+            history: Arc::new(Mutex::new(HistoryLog::new(
+                app_config.discord.ban_period_days,
+            )?)),
             app_config,
         })
     }

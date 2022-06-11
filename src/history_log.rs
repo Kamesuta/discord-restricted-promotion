@@ -31,12 +31,12 @@ pub enum HistoryKeyType {
 pub struct HistoryLog {
     /// sql接続情報
     conn: Arc<Mutex<Connection>>,
-    /// 設定
-    app_config: AppConfig,
+    /// 同じ鯖の宣伝を禁止する日数
+    pub ban_period_days: i64,
 }
 
 impl HistoryLog {
-    pub fn new(app_config: AppConfig) -> Result<HistoryLog> {
+    pub fn new(ban_period_days: i64) -> Result<HistoryLog> {
         let conn = Connection::open("history_log.db")?;
 
         conn.execute(
@@ -51,7 +51,10 @@ impl HistoryLog {
             params!(),
         )?;
 
-        Ok(HistoryLog { conn: Arc::new(Mutex::new(conn)), app_config })
+        Ok(HistoryLog {
+            conn: Arc::new(Mutex::new(conn)),
+            ban_period_days,
+        })
     }
 
     pub fn insert<'t>(&self, record: &HistoryRecord) -> Result<()> {
@@ -85,18 +88,15 @@ impl HistoryLog {
                     FROM history
                     WHERE channel_id = ?1 AND ?2 = ?3 AND timestamp > ?4",
             )?;
-            let timestamp = (chrono::Utc::now() + Duration::weeks(1)).timestamp();
+            let timestamp = (chrono::Utc::now() + Duration::days(self.ban_period_days)).timestamp();
             let (search_key, search_value) = match key {
                 HistoryKeyType::InviteCode(invite_code) => ("invite_code", invite_code.to_owned()),
-                HistoryKeyType::InviteGuildId(invite_guild_id) => ("invite_guild_id", invite_guild_id.to_string()),
+                HistoryKeyType::InviteGuildId(invite_guild_id) => {
+                    ("invite_guild_id", invite_guild_id.to_string())
+                }
             };
             let result = stmt.query_map(
-                params!(
-                    channel_id.to_string(),
-                    search_key,
-                    search_value,
-                    timestamp
-                ),
+                params!(channel_id.to_string(), search_key, search_value, timestamp),
                 |row| {
                     Ok(HistoryRecord {
                         key: HistoryKey {

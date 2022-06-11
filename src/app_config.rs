@@ -13,6 +13,8 @@ pub struct DiscordConfig {
     pub required_message_length: usize,
     /// 警告を無視するロールID
     pub ignore_roles: Vec<RoleId>,
+    /// 同じ鯖の宣伝を禁止する日数
+    pub ban_period_days: i64,
 }
 
 /// アプリケーションの設定

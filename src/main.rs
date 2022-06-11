@@ -1,7 +1,7 @@
 mod app_config;
 mod event_handler;
-mod invite_finder;
 mod history_log;
+mod invite_finder;
 
 use app_config::AppConfig;
 use event_handler::Handler;
