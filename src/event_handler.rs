@@ -4,7 +4,7 @@ use futures::future::{join_all, try_join_all};
 use tokio::time::{sleep, Duration};
 
 use crate::app_config::AppConfig;
-use crate::history_log::{HistoryKey, HistoryKeyType, HistoryLog, HistoryRecord};
+use crate::history_log::{HistoryKeyType, HistoryLog, HistoryRecord};
 use crate::invite_finder::{DiscordInviteLink, InviteFinder};
 
 use serenity::async_trait;
@@ -144,7 +144,7 @@ impl Handler {
                                 format!(
                                     "[メッセージリンク](https://discord.com/channels/{}/{}/{})",
                                     guild_id.to_string(),
-                                    record.key.channel_id.to_string(),
+                                    record.channel_id.to_string(),
                                     record.message_id.to_string(),
                                 )
                             })
@@ -270,12 +270,11 @@ impl Handler {
                 return self
                     .history
                     .insert(HistoryRecord {
-                        key: HistoryKey {
-                            invite_code: invite.invite_code.to_string(),
-                            invite_guild_id: guild_id,
-                            channel_id: msg.channel_id,
-                        },
+                        invite_code: invite.invite_code.to_string(),
+                        invite_guild_id: guild_id,
+                        channel_id: msg.channel_id,
                         message_id: msg.id,
+                        timestamp: msg.timestamp.unix_timestamp(),
                     })
                     .await;
             }

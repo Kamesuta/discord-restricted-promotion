@@ -7,21 +7,17 @@ use rusqlite::{params, Connection};
 use serenity::model::id::{ChannelId, GuildId, MessageId};
 
 #[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
-pub struct HistoryKey {
+pub struct HistoryRecord {
     /// 招待コード
     pub invite_code: String,
     /// 招待コードのギルドID
     pub invite_guild_id: GuildId,
     /// メッセージのチャンネルID
     pub channel_id: ChannelId,
-}
-
-#[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
-pub struct HistoryRecord {
-    /// 招待キー
-    pub key: HistoryKey,
     /// メッセージID
     pub message_id: MessageId,
+    /// タイムスタンプ
+    pub timestamp: i64,
 }
 
 pub enum HistoryKeyType {
@@ -66,11 +62,11 @@ impl HistoryLog {
         self.conn.lock().await.execute(
             "REPLACE INTO history (invite_code, invite_guild_id, channel_id, message_id, timestamp) VALUES (?1, ?2, ?3, ?4, ?5)",
             params!(
-                record.key.invite_code,
-                record.key.invite_guild_id.to_string(),
-                record.key.channel_id.to_string(),
+                record.invite_code,
+                record.invite_guild_id.to_string(),
+                record.channel_id.to_string(),
                 record.message_id.to_string(),
-                chrono::Utc::now().timestamp(),
+                record.timestamp,
             ),
         ).with_context(|| format!("履歴データベースへの書き込みに失敗: {:?}", record))?;
 
@@ -91,7 +87,7 @@ impl HistoryLog {
                 }
             };
             let query =
-                format!("SELECT invite_code, invite_guild_id, channel_id, message_id FROM history WHERE channel_id = ?1 AND {} = ?2 AND timestamp > ?3", search_key);
+                format!("SELECT invite_code, invite_guild_id, channel_id, message_id, timestamp FROM history WHERE channel_id = ?1 AND {} = ?2 AND timestamp > ?3", search_key);
             let mut stmt = conn
                 .prepare(&query)
                 .with_context(|| format!("SQL文の構築に失敗: {}", query))?;
@@ -104,19 +100,25 @@ impl HistoryLog {
                         let invite_guild_id: String = row.get(1)?;
                         let channel_id: String = row.get(2)?;
                         let message_id: String = row.get(3)?;
-                        Ok((invite_code, invite_guild_id, channel_id, message_id))
+                        let timestamp: i64 = row.get(4)?;
+                        Ok((
+                            invite_code,
+                            invite_guild_id,
+                            channel_id,
+                            message_id,
+                            timestamp,
+                        ))
                     },
                 )
                 .context("履歴データベースの読み込みに失敗")?
                 .map(|row| -> Result<HistoryRecord> {
-                    let (invite_code, invite_guild_id, channel_id, message_id) = row?;
+                    let (invite_code, invite_guild_id, channel_id, message_id, timestamp) = row?;
                     Ok(HistoryRecord {
-                        key: HistoryKey {
-                            invite_code,
-                            invite_guild_id: GuildId(invite_guild_id.parse()?),
-                            channel_id: ChannelId(channel_id.parse()?),
-                        },
+                        invite_code,
+                        invite_guild_id: GuildId(invite_guild_id.parse()?),
+                        channel_id: ChannelId(channel_id.parse()?),
                         message_id: MessageId(message_id.parse()?),
+                        timestamp,
                     })
                 })
                 .filter_map(|row| row.ok())
