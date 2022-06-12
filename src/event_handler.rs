@@ -35,11 +35,6 @@ impl Handler {
         msg: &Message,
         replies: &Vec<Message>,
     ) -> Result<(), Box<dyn Error>> {
-        // 警告がない場合は処理を行わない
-        if replies.is_empty() {
-            return Ok(());
-        }
-
         // 一定時間待つ
         sleep(Duration::from_secs(self.app_config.discord.alert_sec)).await;
 
@@ -251,7 +246,7 @@ impl EventHandler for Handler {
             .invite_codes
             .clone()
             .into_iter()
-            .map(|f| HistoryKeyType::InviteCode(f.invite_link.to_string()))
+            .map(|f| HistoryKeyType::InviteCode(f.invite_code.to_string()))
             .collect::<Vec<_>>();
         match self.check_invite_history(&ctx, &msg, invite_codes).await {
             Ok(reply) => match reply {
@@ -303,34 +298,37 @@ impl EventHandler for Handler {
             }
         };
 
-        // 登録
-        let invite_result = invites.iter().map(|invite| async {
-            if let Some(guild_id) = invite.guild_id {
-                return self
-                    .history
-                    .insert(HistoryRecord {
-                        key: HistoryKey {
-                            invite_code: invite.invite_code.to_string(),
-                            invite_guild_id: guild_id,
-                            channel_id: msg.channel_id,
-                        },
-                        message_id: msg.id,
-                    })
-                    .await;
+        // 警告がない場合、履歴に登録
+        if replies.is_empty() {
+            // 登録
+            let invite_result = invites.iter().map(|invite| async {
+                if let Some(guild_id) = invite.guild_id {
+                    return self
+                        .history
+                        .insert(HistoryRecord {
+                            key: HistoryKey {
+                                invite_code: invite.invite_code.to_string(),
+                                invite_guild_id: guild_id,
+                                channel_id: msg.channel_id,
+                            },
+                            message_id: msg.id,
+                        })
+                        .await;
+                }
+                Ok(())
+            });
+            match try_join_all(invite_result).await {
+                Ok(_) => (),
+                Err(why) => {
+                    println!("履歴の登録に失敗: {}", why);
+                    return;
+                }
+            };
+        } else {
+            // 一定時間後に警告メッセージを削除
+            if let Err(why) = self.wait_and_delete_message(&ctx, &msg, &replies).await {
+                println!("警告メッセージの削除に失敗: {}", why);
             }
-            Ok(())
-        });
-        match try_join_all(invite_result).await {
-            Ok(_) => (),
-            Err(why) => {
-                println!("履歴の登録に失敗: {}", why);
-                return;
-            }
-        };
-
-        // 一定時間後に警告メッセージを削除
-        if let Err(why) = self.wait_and_delete_message(&ctx, &msg, &replies).await {
-            println!("警告メッセージの削除に失敗: {}", why);
         }
     }
 }

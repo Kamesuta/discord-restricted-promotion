@@ -1,8 +1,9 @@
+use std::error::Error;
 use std::sync::Arc;
 
 use chrono::Duration;
 use futures::lock::Mutex;
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, Result, Row};
 use serenity::model::id::{ChannelId, GuildId, MessageId};
 
 pub struct HistoryKey {
@@ -40,13 +41,13 @@ impl HistoryLog {
         let conn = Connection::open("history_log.db")?;
 
         conn.execute(
-            "CREATE TABLE history (
-                id               INTEGER PRIMARY KEY AUTO_INCREMENT,
+            "CREATE TABLE IF NOT EXISTS history (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
                 invite_code      VARCHAR(20) NOT NULL UNIQUE,
                 invite_guild_id  VARCHAR(20) NOT NULL,
                 channel_id       VARCHAR(20) NOT NULL,
                 message_id       VARCHAR(20) NOT NULL UNIQUE,
-                timestamp        TIMESTAMP NOT NULL,
+                timestamp        TIMESTAMP NOT NULL
             )",
             params!(),
         )?;
@@ -59,7 +60,7 @@ impl HistoryLog {
 
     pub async fn insert<'t>(&self, record: HistoryRecord) -> Result<()> {
         self.conn.lock().await.execute(
-            "REPLACE INTO history (invite_code, invite_guild_id, channel_id, message_id, timestamp) VALUES (?1, ?2, ?3, ?4 ?5)",
+            "REPLACE INTO history (invite_code, invite_guild_id, channel_id, message_id, timestamp) VALUES (?1, ?2, ?3, ?4, ?5)",
             params!(
                 record.key.invite_code,
                 record.key.invite_guild_id.to_string(),
@@ -79,36 +80,41 @@ impl HistoryLog {
     ) -> Result<Vec<HistoryRecord>> {
         let collect: Vec<HistoryRecord> = {
             let conn = self.conn.lock().await;
-            let mut stmt = conn.prepare(
-                "SELECT
-                        invite_code,
-                        invite_guild_id,
-                        channel_id,
-                        message_id
-                    FROM history
-                    WHERE channel_id = ?1 AND ?2 = ?3 AND timestamp > ?4",
-            )?;
-            let timestamp = (chrono::Utc::now() + Duration::days(self.ban_period_days)).timestamp();
             let (search_key, search_value) = match key {
                 HistoryKeyType::InviteCode(invite_code) => ("invite_code", invite_code.to_owned()),
                 HistoryKeyType::InviteGuildId(invite_guild_id) => {
                     ("invite_guild_id", invite_guild_id.to_string())
                 }
             };
-            let result = stmt.query_map(
-                params!(channel_id.to_string(), search_key, search_value, timestamp),
-                |row| {
+            let query =
+                format!("SELECT invite_code, invite_guild_id, channel_id, message_id FROM history WHERE channel_id = ?1 AND {} = ?2 AND timestamp > ?3", search_key);
+            let mut stmt = conn.prepare(&query)?;
+            let timestamp = (chrono::Utc::now() - Duration::days(self.ban_period_days)).timestamp();
+            let result = stmt
+                .query_map(
+                    params!(channel_id.to_string(), search_value, timestamp),
+                    |row| {
+                        let invite_code: String = row.get(0)?;
+                        let invite_guild_id: String = row.get(1)?;
+                        let channel_id: String = row.get(2)?;
+                        let message_id: String = row.get(3)?;
+                        Ok((invite_code, invite_guild_id, channel_id, message_id))
+                    },
+                )?
+                .map(|row| -> Result<HistoryRecord, Box<dyn Error>> {
+                    let (invite_code, invite_guild_id, channel_id, message_id) = row?;
                     Ok(HistoryRecord {
                         key: HistoryKey {
-                            invite_code: row.get(0)?,
-                            invite_guild_id: GuildId(row.get(1)?),
-                            channel_id: ChannelId(row.get(2)?),
+                            invite_code,
+                            invite_guild_id: GuildId(invite_guild_id.parse()?),
+                            channel_id: ChannelId(channel_id.parse()?),
                         },
-                        message_id: MessageId(row.get(3)?),
+                        message_id: MessageId(message_id.parse()?),
                     })
-                },
-            )?;
-            result.filter_map(|x| x.ok()).collect()
+                })
+                .filter_map(|row| row.ok())
+                .collect::<Vec<_>>();
+            result
         };
         Ok(collect)
     }
