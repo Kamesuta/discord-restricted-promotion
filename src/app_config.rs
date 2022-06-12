@@ -1,6 +1,6 @@
+use anyhow::{Context as _, Result};
 use config::Config;
 use serenity::model::id::{ChannelId, RoleId};
-use std::error::Error;
 
 /// Discordの設定
 #[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
@@ -26,7 +26,7 @@ pub struct AppConfig {
 
 impl AppConfig {
     /// 設定を読み込む
-    pub fn load_config() -> Result<AppConfig, Box<dyn Error>> {
+    pub fn load_config() -> Result<AppConfig> {
         // 設定ファイルを読み込む
         let config = Config::builder()
             // Add in `./Settings.toml`
@@ -36,7 +36,9 @@ impl AppConfig {
             .add_source(config::Environment::with_prefix("APP"))
             .build()?;
         // 設定ファイルをパース
-        let app_config = config.try_deserialize::<AppConfig>()?;
+        let app_config = config
+            .try_deserialize::<AppConfig>()
+            .context("設定ファイルの読み込みに失敗")?;
         Ok(app_config)
     }
 }

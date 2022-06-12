@@ -1,11 +1,12 @@
-use std::error::Error;
+use anyhow::{Context as _, Result};
 use std::sync::Arc;
 
 use chrono::Duration;
 use futures::lock::Mutex;
-use rusqlite::{params, Connection, Result, Row};
+use rusqlite::{params, Connection};
 use serenity::model::id::{ChannelId, GuildId, MessageId};
 
+#[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
 pub struct HistoryKey {
     /// 招待コード
     pub invite_code: String,
@@ -15,6 +16,7 @@ pub struct HistoryKey {
     pub channel_id: ChannelId,
 }
 
+#[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
 pub struct HistoryRecord {
     /// 招待キー
     pub key: HistoryKey,
@@ -38,7 +40,8 @@ pub struct HistoryLog {
 
 impl HistoryLog {
     pub fn new(ban_period_days: i64) -> Result<HistoryLog> {
-        let conn = Connection::open("history_log.db")?;
+        let conn =
+            Connection::open("history_log.db").context("履歴データベースのオープンに失敗")?;
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS history (
@@ -50,7 +53,8 @@ impl HistoryLog {
                 timestamp        TIMESTAMP NOT NULL
             )",
             params!(),
-        )?;
+        )
+        .context("履歴データベースの作成に失敗")?;
 
         Ok(HistoryLog {
             conn: Arc::new(Mutex::new(conn)),
@@ -68,7 +72,7 @@ impl HistoryLog {
                 record.message_id.to_string(),
                 chrono::Utc::now().timestamp(),
             ),
-        )?;
+        ).with_context(|| format!("履歴データベースへの書き込みに失敗: {:?}", record))?;
 
         Ok(())
     }
@@ -88,7 +92,9 @@ impl HistoryLog {
             };
             let query =
                 format!("SELECT invite_code, invite_guild_id, channel_id, message_id FROM history WHERE channel_id = ?1 AND {} = ?2 AND timestamp > ?3", search_key);
-            let mut stmt = conn.prepare(&query)?;
+            let mut stmt = conn
+                .prepare(&query)
+                .with_context(|| format!("SQL文の構築に失敗: {}", query))?;
             let timestamp = (chrono::Utc::now() - Duration::days(self.ban_period_days)).timestamp();
             let result = stmt
                 .query_map(
@@ -100,8 +106,9 @@ impl HistoryLog {
                         let message_id: String = row.get(3)?;
                         Ok((invite_code, invite_guild_id, channel_id, message_id))
                     },
-                )?
-                .map(|row| -> Result<HistoryRecord, Box<dyn Error>> {
+                )
+                .context("履歴データベースの読み込みに失敗")?
+                .map(|row| -> Result<HistoryRecord> {
                     let (invite_code, invite_guild_id, channel_id, message_id) = row?;
                     Ok(HistoryRecord {
                         key: HistoryKey {

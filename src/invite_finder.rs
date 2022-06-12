@@ -1,8 +1,8 @@
+use anyhow::{Context as _, Result};
 use chrono::prelude::*;
 use futures::future::try_join_all;
 use regex::Regex;
 use serenity::model::id::GuildId;
-use std::error::Error;
 
 /// パース用ギルド情報
 #[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
@@ -60,7 +60,7 @@ impl<'t> InviteFinder<'t> {
     }
 
     /// APIから招待リンクの詳細を取得する
-    pub async fn get_invite_list(&self) -> Result<Vec<DiscordInviteLink<'t>>, Box<dyn Error>> {
+    pub async fn get_invite_list(&self) -> Result<Vec<DiscordInviteLink<'t>>> {
         try_join_all(self.invite_codes.iter().map(|invite_link| async move {
             // APIリクエストを構築
             let invite_url = format!(
@@ -68,9 +68,14 @@ impl<'t> InviteFinder<'t> {
                 invite_link.invite_code
             );
             // APIリクエストを実行
-            let invite_response = reqwest::get(&invite_url).await?;
+            let invite_response = reqwest::get(&invite_url)
+                .await
+                .context("招待リンクの取得に失敗しました")?;
             // 招待リンク情報をパース
-            let invite_result = invite_response.json::<DiscordInvite>().await?;
+            let invite_result = invite_response
+                .json::<DiscordInvite>()
+                .await
+                .context("招待リンク情報のパースに失敗しました")?;
             // 招待リンクの有効期限を抽出
             let expires_at = invite_result
                 .expires_at

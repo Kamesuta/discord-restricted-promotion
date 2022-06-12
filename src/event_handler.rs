@@ -1,6 +1,6 @@
+use anyhow::{anyhow, Context as _, Result};
 use chrono_tz::Tz::Japan;
 use futures::future::{join_all, try_join_all};
-use std::error::Error;
 use tokio::time::{sleep, Duration};
 
 use crate::app_config::AppConfig;
@@ -21,7 +21,7 @@ pub struct Handler {
 
 impl Handler {
     /// コンストラクタ
-    pub fn new(app_config: AppConfig) -> Result<Self, Box<dyn Error>> {
+    pub fn new(app_config: AppConfig) -> Result<Self> {
         Ok(Self {
             history: HistoryLog::new(app_config.discord.ban_period_days)?,
             app_config,
@@ -33,17 +33,20 @@ impl Handler {
         &self,
         ctx: &Context,
         msg: &Message,
-        replies: &Vec<Message>,
-    ) -> Result<(), Box<dyn Error>> {
+        reply: &Message,
+    ) -> Result<()> {
         // 一定時間待つ
         sleep(Duration::from_secs(self.app_config.discord.alert_sec)).await;
 
         // 警告メッセージを削除
-        for reply in replies {
-            reply.delete(&ctx).await?;
-        }
+        reply
+            .delete(&ctx)
+            .await
+            .with_context(|| format!("警告メッセージの削除に失敗: {:?}", reply))?;
         // 該当メッセージを削除
-        msg.delete(&ctx.http).await?;
+        msg.delete(&ctx.http)
+            .await
+            .with_context(|| format!("対象メッセージの削除に失敗: {:?}", msg))?;
 
         Ok(())
     }
@@ -54,7 +57,7 @@ impl Handler {
         ctx: &Context,
         msg: &Message,
         invites: &Vec<DiscordInviteLink<'t>>,
-    ) -> Result<Option<Message>, Box<dyn Error>> {
+    ) -> Result<Option<Message>> {
         // 無期限の招待コードを除外
         let expirable_invites = invites
             .iter()
@@ -86,7 +89,8 @@ impl Handler {
                     e
                 })
             })
-            .await?;
+            .await
+            .context("警告メッセージの構築に失敗")?;
 
         Ok(Some(reply))
     }
@@ -97,7 +101,7 @@ impl Handler {
         ctx: &Context,
         msg: &Message,
         invites: Vec<HistoryKeyType>,
-    ) -> Result<Option<Message>, Box<dyn Error>> {
+    ) -> Result<Option<Message>> {
         // 過去ログに同じリンクがないかを検証
         let invites = invites.into_iter().map(|invite_key| async {
             let result = self.history.validate(&msg.channel_id, &invite_key).await;
@@ -121,7 +125,7 @@ impl Handler {
         }
 
         // ギルドIDを取得
-        let guild_id = msg.guild_id.ok_or("ギルドIDの取得に失敗")?;
+        let guild_id = msg.guild_id.ok_or(anyhow!("ギルドIDの取得に失敗"))?;
 
         // 警告メッセージを構築
         let reply = msg
@@ -151,7 +155,8 @@ impl Handler {
                     e
                 })
             })
-            .await?;
+            .await
+            .context("警告メッセージの構築に失敗")?;
 
         Ok(Some(reply))
     }
@@ -162,7 +167,7 @@ impl Handler {
         ctx: &Context,
         msg: &Message,
         finder: &InviteFinder<'t>,
-    ) -> Result<Option<Message>, Box<dyn Error>> {
+    ) -> Result<Option<Message>> {
         // リンクの合計の長さを取得
         let link_total_length = finder
             .invite_codes
@@ -191,9 +196,96 @@ impl Handler {
                     e
                 })
             })
-            .await?;
+            .await
+            .context("警告メッセージの構築に失敗")?;
 
         Ok(Some(reply))
+    }
+
+    async fn check_invite<'t>(&self, ctx: &Context, msg: &Message) -> Result<Option<Message>> {
+        // 招待リンクをパース
+        let finder = InviteFinder::new(msg.content.as_str());
+
+        // メッセージを検証
+        match self
+            .check_invite_message(&ctx, &msg, &finder)
+            .await
+            .context("メッセージ長さの検証に失敗")?
+        {
+            Some(reply) => return Ok(Some(reply)),
+            None => (), // 検証に失敗
+        };
+
+        // メッセージが過去に送信された招待リンクを検証 (招待リンク)
+        let invite_codes = finder
+            .invite_codes
+            .clone()
+            .into_iter()
+            .map(|f| HistoryKeyType::InviteCode(f.invite_code.to_string()))
+            .collect::<Vec<_>>();
+        match self
+            .check_invite_history(&ctx, &msg, invite_codes)
+            .await
+            .context("過去の招待コードの検証に失敗")?
+        {
+            Some(reply) => return Ok(Some(reply)),
+            None => (), // 検証に失敗
+        };
+
+        // 招待コードリストを取得
+        let invites = finder
+            .get_invite_list()
+            .await
+            .context("招待リンク情報の取得に失敗")?;
+
+        // 招待コードを検証
+        match self
+            .check_invite_links(&ctx, &msg, &invites)
+            .await
+            .context("招待コード期限の検証に失敗")?
+        {
+            Some(reply) => return Ok(Some(reply)),
+            None => (), // 検証に失敗
+        };
+
+        // メッセージが過去に送信された招待リンクを検証 (ギルドID)
+        let invite_guilds = invites
+            .clone()
+            .into_iter()
+            .filter_map(|f| f.guild_id)
+            .map(|guild_id| HistoryKeyType::InviteGuildId(guild_id))
+            .collect::<Vec<_>>();
+        match self
+            .check_invite_history(&ctx, &msg, invite_guilds)
+            .await
+            .context("過去の招待サーバーの検証に失敗")?
+        {
+            Some(reply) => return Ok(Some(reply)),
+            None => (), // 検証に失敗
+        };
+
+        // 警告がない場合、履歴に登録
+        let invite_result = invites.iter().map(|invite| async {
+            if let Some(guild_id) = invite.guild_id {
+                return self
+                    .history
+                    .insert(HistoryRecord {
+                        key: HistoryKey {
+                            invite_code: invite.invite_code.to_string(),
+                            invite_guild_id: guild_id,
+                            channel_id: msg.channel_id,
+                        },
+                        message_id: msg.id,
+                    })
+                    .await;
+            }
+            Ok(())
+        });
+        try_join_all(invite_result)
+            .await
+            .context("履歴の登録に失敗")?;
+
+        Ok(None)
     }
 }
 
@@ -223,112 +315,21 @@ impl EventHandler for Handler {
             return;
         }
 
-        // 招待リンクをパース
-        let finder = InviteFinder::new(msg.content.as_str());
-
-        // 警告リプライ
-        let mut replies: Vec<Message> = Vec::new();
-
-        // メッセージを検証
-        match self.check_invite_message(&ctx, &msg, &finder).await {
-            Ok(reply) => match reply {
-                Some(reply) => replies.push(reply),
-                None => (), // 検証に失敗
-            },
+        // チェック&警告
+        let reply = match self.check_invite(&ctx, &msg).await {
+            Ok(Some(reply)) => reply, // 警告あり
+            Ok(None) => return,       // 警告なし
             Err(why) => {
-                println!("検証に失敗: {}", why);
+                // エラー
+                println!("検証に失敗: {:?}", why);
                 return;
             }
         };
 
-        // メッセージが過去に送信された招待リンクを検証 (招待リンク)
-        let invite_codes = finder
-            .invite_codes
-            .clone()
-            .into_iter()
-            .map(|f| HistoryKeyType::InviteCode(f.invite_code.to_string()))
-            .collect::<Vec<_>>();
-        match self.check_invite_history(&ctx, &msg, invite_codes).await {
-            Ok(reply) => match reply {
-                Some(reply) => replies.push(reply),
-                None => (), // 検証に失敗
-            },
-            Err(why) => {
-                println!("検証に失敗: {}", why);
-                return;
-            }
-        };
-
-        // 招待コードリストを取得
-        let invites = match finder.get_invite_list().await {
-            Ok(invites) => invites,
-            Err(why) => {
-                println!("招待リンク情報の取得に失敗: {}", why);
-                return;
-            }
-        };
-
-        // 招待コードを検証
-        match self.check_invite_links(&ctx, &msg, &invites).await {
-            Ok(reply) => match reply {
-                Some(reply) => replies.push(reply),
-                None => (), // 検証に失敗
-            },
-            Err(why) => {
-                println!("招待リンクの検証に失敗: {}", why);
-                return;
-            }
-        };
-
-        // メッセージが過去に送信された招待リンクを検証 (ギルドID)
-        let invite_guilds = invites
-            .clone()
-            .into_iter()
-            .filter_map(|f| f.guild_id)
-            .map(|guild_id| HistoryKeyType::InviteGuildId(guild_id))
-            .collect::<Vec<_>>();
-        match self.check_invite_history(&ctx, &msg, invite_guilds).await {
-            Ok(reply) => match reply {
-                Some(reply) => replies.push(reply),
-                None => (), // 検証に失敗
-            },
-            Err(why) => {
-                println!("検証に失敗: {}", why);
-                return;
-            }
-        };
-
-        // 警告がない場合、履歴に登録
-        if replies.is_empty() {
-            // 登録
-            let invite_result = invites.iter().map(|invite| async {
-                if let Some(guild_id) = invite.guild_id {
-                    return self
-                        .history
-                        .insert(HistoryRecord {
-                            key: HistoryKey {
-                                invite_code: invite.invite_code.to_string(),
-                                invite_guild_id: guild_id,
-                                channel_id: msg.channel_id,
-                            },
-                            message_id: msg.id,
-                        })
-                        .await;
-                }
-                Ok(())
-            });
-            match try_join_all(invite_result).await {
-                Ok(_) => (),
-                Err(why) => {
-                    println!("履歴の登録に失敗: {}", why);
-                    return;
-                }
-            };
-        } else {
-            // 一定時間後に警告メッセージを削除
-            if let Err(why) = self.wait_and_delete_message(&ctx, &msg, &replies).await {
-                println!("警告メッセージの削除に失敗: {}", why);
-            }
+        // 一定時間後に警告メッセージを削除
+        if let Err(why) = self.wait_and_delete_message(&ctx, &msg, &reply).await {
+            println!("警告メッセージの削除に失敗: {}", why);
+            return;
         }
     }
 }

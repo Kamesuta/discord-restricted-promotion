@@ -3,54 +3,40 @@ mod event_handler;
 mod history_log;
 mod invite_finder;
 
+use anyhow::{Context as _, Result};
 use app_config::AppConfig;
 use event_handler::Handler;
-use std::{env, error::Error};
+use std::env;
 
 use serenity::framework::standard::StandardFramework;
 use serenity::prelude::*;
 
 /// メイン処理
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<()> {
     // フレームワークを初期化
     let framework = StandardFramework::new().configure(|c| c.prefix("~"));
 
     // 設定ファイルを読み込む
-    let app_config = match AppConfig::load_config() {
-        Ok(config) => config,
-        Err(why) => {
-            println!("設定ファイルの読み込みに失敗: {:?}", why);
-            return Err(why);
-        }
-    };
+    let app_config = AppConfig::load_config().context("設定ファイルの読み込みに失敗")?;
 
     // イベント受信リスナーを構築
-    let handler = Handler::new(app_config)?;
+    let handler = Handler::new(app_config).context("イベント受信リスナーの構築に失敗")?;
 
     // 環境変数のトークンを使用してDiscord APIを初期化
     let token = env::var("DISCORD_TOKEN").expect("token");
     let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
-    let mut client = match Client::builder(token, intents)
+    let mut client = Client::builder(token, intents)
         .event_handler(handler)
         .framework(framework)
         .await
-    {
-        Ok(client) => client,
-        Err(why) => {
-            println!("Botの初期化に失敗しました: {:?}", why);
-            return Err(why.into());
-        }
-    };
+        .context("Botの初期化に失敗")?;
 
     // イベント受信を開始
-    match client.start().await {
-        Ok(_) => (),
-        Err(why) => {
-            println!("Bot動作中にエラーが発生しました: {:?}", why);
-            return Err(why.into());
-        }
-    };
+    client
+        .start()
+        .await
+        .context("Bot動作中にエラーが発生しました")?;
 
     Ok(())
 }
