@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
     let handler = Handler::new(app_config).context("イベント受信リスナーの構築に失敗")?;
 
     // 環境変数のトークンを使用してDiscord APIを初期化
-    let token = env::var("DISCORD_TOKEN").expect("token");
+    let token = env::var("DISCORD_TOKEN").context("トークンが指定されていません")?;
     let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
     let mut client = Client::builder(token, intents)
         .event_handler(handler)

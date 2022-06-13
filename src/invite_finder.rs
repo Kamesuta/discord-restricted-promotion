@@ -1,4 +1,4 @@
-use anyhow::{Context as _, Result};
+use anyhow::{anyhow, Context as _, Result};
 use chrono::prelude::*;
 use futures::future::try_join_all;
 use regex::Regex;
@@ -41,22 +41,27 @@ pub struct InviteFinder<'t> {
 
 impl<'t> InviteFinder<'t> {
     /// メッセージをパースする
-    pub fn new(message: &'t str) -> InviteFinder<'t> {
+    pub fn new(message: &'t str) -> Result<InviteFinder<'t>> {
         // 正規表現パターンを準備
-        let invite_regex = Regex::new(r"(?:https?://)?discord\.gg/(\w+)").unwrap();
+        let invite_regex = Regex::new(
+            r"(?:https?://)?(?:discord\.(?:gg|io|me|li)|(?:discord|discordapp)\.com/invite)/(\w+)",
+        )
+        .context("正規表現のパターンの作成に失敗")?;
 
         // 招待コードリストを取得
         let invite_codes = invite_regex
             .captures_iter(message)
-            .map(|c| DiscordInviteLink {
-                invite_link: c.get(0).unwrap().as_str(),
-                invite_code: c.get(1).unwrap().as_str(),
-                expires_at: None,
-                guild_id: None,
+            .map(|c| {
+                Ok(DiscordInviteLink {
+                    invite_link: c.get(0).ok_or(anyhow!("招待リンクのパース失敗"))?.as_str(),
+                    invite_code: c.get(1).ok_or(anyhow!("招待コードのパース失敗"))?.as_str(),
+                    expires_at: None,
+                    guild_id: None,
+                })
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<DiscordInviteLink>>>()?;
 
-        InviteFinder { invite_codes }
+        Ok(InviteFinder { invite_codes })
     }
 
     /// APIから招待リンクの詳細を取得する
@@ -77,9 +82,14 @@ impl<'t> InviteFinder<'t> {
                 .await
                 .context("招待リンク情報のパースに失敗しました")?;
             // 招待リンクの有効期限を抽出
-            let expires_at = invite_result
-                .expires_at
-                .map(|expires_at| DateTime::parse_from_rfc3339(&expires_at).unwrap());
+            let expires_at = match invite_result.expires_at {
+                Some(expires_at) => Some(
+                    // 期限付きの招待リンク
+                    DateTime::parse_from_rfc3339(expires_at.as_str())
+                        .context("招待リンクの有効期限のパースに失敗しました")?,
+                ),
+                None => None, // 無期限リンク
+            };
             // 招待リンクのギルドIDを抽出
             let guild_id = invite_result.guild.map(|g| g.id);
 

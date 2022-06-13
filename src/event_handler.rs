@@ -79,17 +79,21 @@ impl Handler {
                 m.embed(|e| {
                     e.title("宣伝できない招待リンク");
                     e.description("招待リンクは無期限のものだけ使用できます");
-                    e.fields(expirable_invites.iter().map(move |x| {
-                        (
-                            format!("`{}` の有効期限", x.invite_code),
-                            x.expires_at
-                                .as_ref()
-                                .unwrap()
-                                .with_timezone(&Japan)
-                                .format("%Y年%m月%d日 %H時%M分%S秒"),
-                            false,
-                        )
-                    }));
+                    e.fields(
+                        expirable_invites
+                            .iter()
+                            .filter_map(|x| {
+                                Some((
+                                    x,
+                                    x.expires_at?
+                                        .with_timezone(&Japan)
+                                        .format("%Y年%m月%d日 %H時%M分%S秒"),
+                                ))
+                            })
+                            .map(|(x, expires_at)| {
+                                (format!("`{}` の有効期限", x.invite_code), expires_at, false)
+                            }),
+                    );
                     e
                 })
             })
@@ -213,9 +217,10 @@ impl Handler {
         Ok(Some(reply))
     }
 
+    /// 招待メッセージの検証をすべて実行する
     async fn check_invite<'t>(&self, ctx: &Context, msg: &Message) -> Result<Option<Message>> {
         // 招待リンクをパース
-        let finder = InviteFinder::new(msg.content.as_str());
+        let finder = InviteFinder::new(msg.content.as_str())?;
 
         // メッセージを検証
         match self
