@@ -53,8 +53,14 @@ impl<'t> InviteFinder<'t> {
             .captures_iter(message)
             .map(|c| {
                 Ok(DiscordInviteLink {
-                    invite_link: c.get(0).ok_or(anyhow!("招待リンクのパース失敗"))?.as_str(),
-                    invite_code: c.get(1).ok_or(anyhow!("招待コードのパース失敗"))?.as_str(),
+                    invite_link: c
+                        .get(0)
+                        .ok_or_else(|| anyhow!("招待リンクのパース失敗"))?
+                        .as_str(),
+                    invite_code: c
+                        .get(1)
+                        .ok_or_else(|| anyhow!("招待コードのパース失敗"))?
+                        .as_str(),
                     expires_at: None,
                     guild_id: None,
                 })

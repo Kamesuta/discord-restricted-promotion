@@ -43,12 +43,12 @@ impl Handler {
 
         // 警告メッセージを削除
         reply
-            .delete(&ctx)
+            .delete(ctx)
             .await
             .with_context(|| format!("警告メッセージの削除に失敗: {}", reply.id))?;
         // 該当メッセージを削除
         msg.channel_id
-            .delete_message(&ctx, msg.id)
+            .delete_message(ctx, msg.id)
             .await
             .with_context(|| format!("対象メッセージの削除に失敗: {}", msg.id))?;
 
@@ -60,7 +60,7 @@ impl Handler {
         &self,
         ctx: &Context,
         msg: &Message,
-        invites: &Vec<DiscordInviteLink<'t>>,
+        invites: &[DiscordInviteLink<'t>],
     ) -> Result<Option<Message>> {
         // 無期限の招待コードを除外
         let expirable_invites = invites
@@ -74,7 +74,7 @@ impl Handler {
         // 警告メッセージを構築
         let reply = msg
             .channel_id
-            .send_message(&ctx, |m| {
+            .send_message(ctx, |m| {
                 m.reference_message(msg);
                 m.embed(|e| {
                     e.title("宣伝できない招待リンク");
@@ -111,7 +111,8 @@ impl Handler {
         invites: Vec<HistoryFindKey>,
     ) -> Result<Option<Message>> {
         // 過去ログに同じリンクがないかを検証
-        let invites: Vec<Option<(HistoryFindKey, Vec<(HistoryRecord, String)>)>> =
+        type RecordLink = Vec<(HistoryRecord, String)>;
+        let invites: Vec<Option<(HistoryFindKey, RecordLink)>> =
             try_join_all(invites.into_iter().map(|invite_key| async {
                 let records = self
                     .history
@@ -124,24 +125,21 @@ impl Handler {
                 }
 
                 // リンク取得
-                let records: Vec<(HistoryRecord, String)> =
-                    join_all(records.into_iter().map(|record| async {
-                        let invite_link = record
-                            .message_id
-                            .link_ensured(&ctx, record.channel_id, None)
-                            .await;
-                        (record, invite_link)
-                    }))
-                    .await;
+                let records: RecordLink = join_all(records.into_iter().map(|record| async {
+                    let invite_link = record
+                        .message_id
+                        .link_ensured(ctx, record.channel_id, None)
+                        .await;
+                    (record, invite_link)
+                }))
+                .await;
 
                 // async closureは型を明示できないので、Okのときに型を明示する
                 // https://rust-lang.github.io/async-book/07_workarounds/02_err_in_async_blocks.html
-                Ok::<Option<(HistoryFindKey, Vec<(HistoryRecord, String)>)>, Error>(Some((
-                    invite_key, records,
-                )))
+                Ok::<Option<(HistoryFindKey, RecordLink)>, Error>(Some((invite_key, records)))
             }))
             .await?;
-        let invites = invites.into_iter().filter_map(|f| f).collect::<Vec<_>>();
+        let invites = invites.into_iter().flatten().collect::<Vec<_>>();
         if invites.is_empty() {
             // 過去に送信されたリンクが無い
             return Ok(None);
@@ -150,7 +148,7 @@ impl Handler {
         // 警告メッセージを構築
         let reply = msg
             .channel_id
-            .send_message(&ctx, |m| {
+            .send_message(ctx, |m| {
                 m.reference_message(msg);
                 m.embed(|e| {
                     e.title("宣伝済みの招待リンク");
@@ -201,7 +199,7 @@ impl Handler {
         // 警告メッセージを構築
         let reply = msg
             .channel_id
-            .send_message(&ctx, |m| {
+            .send_message(ctx, |m| {
                 m.reference_message(msg);
                 m.embed(|e| {
                     e.title("説明文不足");
@@ -224,7 +222,7 @@ impl Handler {
 
         // メッセージを検証
         match self
-            .check_invite_message(&ctx, &msg, &finder)
+            .check_invite_message(ctx, msg, &finder)
             .await
             .context("メッセージ長さの検証に失敗")?
         {
@@ -240,7 +238,7 @@ impl Handler {
             .map(|f| HistoryFindKey::InviteCode(f.invite_code.to_string()))
             .collect::<Vec<_>>();
         match self
-            .check_invite_history(&ctx, &msg, invite_codes)
+            .check_invite_history(ctx, msg, invite_codes)
             .await
             .context("過去の招待コードの検証に失敗")?
         {
@@ -256,7 +254,7 @@ impl Handler {
 
         // 招待コードを検証
         match self
-            .check_invite_links(&ctx, &msg, &invites)
+            .check_invite_links(ctx, msg, &invites)
             .await
             .context("招待コード期限の検証に失敗")?
         {
@@ -269,10 +267,10 @@ impl Handler {
             .clone()
             .into_iter()
             .filter_map(|f| f.guild_id)
-            .map(|guild_id| HistoryFindKey::InviteGuildId(guild_id))
+            .map(HistoryFindKey::InviteGuildId)
             .collect::<Vec<_>>();
         match self
-            .check_invite_history(&ctx, &msg, invite_guilds)
+            .check_invite_history(ctx, msg, invite_guilds)
             .await
             .context("過去の招待サーバーの検証に失敗")?
         {
