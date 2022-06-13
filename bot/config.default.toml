@@ -1,0 +1,6 @@
+[discord]
+channels = [000000000000000000]
+alert_sec = 30
+required_message_length = 30
+ignore_roles = []
+ban_period_days = 7

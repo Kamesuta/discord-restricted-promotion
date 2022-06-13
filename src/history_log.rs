@@ -42,7 +42,7 @@ impl HistoryLog {
     pub fn new(ban_period_days: i64) -> Result<HistoryLog> {
         // データベースに接続
         let conn =
-            Connection::open("history_log.db").context("履歴データベースのオープンに失敗")?;
+            Connection::open("bot/history_log.db").context("履歴データベースのオープンに失敗")?;
 
         // テーブルを作成
         conn.execute(
