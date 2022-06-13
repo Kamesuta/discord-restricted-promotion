@@ -7,7 +7,7 @@ use serenity::model::id::{ChannelId, GuildId, MessageId};
 use tokio::time::{sleep, Duration};
 
 use crate::app_config::AppConfig;
-use crate::history_log::{HistoryKeyType, HistoryLog, HistoryRecord};
+use crate::history_log::{HistoryFindKey, HistoryLog, HistoryRecord};
 use crate::invite_finder::{DiscordInviteLink, InviteFinder};
 
 use serenity::async_trait;
@@ -104,10 +104,10 @@ impl Handler {
         &self,
         ctx: &Context,
         msg: &Message,
-        invites: Vec<HistoryKeyType>,
+        invites: Vec<HistoryFindKey>,
     ) -> Result<Option<Message>> {
         // 過去ログに同じリンクがないかを検証
-        let invites: Vec<Option<(HistoryKeyType, Vec<(HistoryRecord, String)>)>> =
+        let invites: Vec<Option<(HistoryFindKey, Vec<(HistoryRecord, String)>)>> =
             try_join_all(invites.into_iter().map(|invite_key| async {
                 let records = self
                     .history
@@ -132,14 +132,15 @@ impl Handler {
 
                 // async closureは型を明示できないので、Okのときに型を明示する
                 // https://rust-lang.github.io/async-book/07_workarounds/02_err_in_async_blocks.html
-                Ok::<Option<(HistoryKeyType, Vec<(HistoryRecord, String)>)>, Error>(Some((
+                Ok::<Option<(HistoryFindKey, Vec<(HistoryRecord, String)>)>, Error>(Some((
                     invite_key, records,
                 )))
             }))
             .await?;
         let invites = invites.into_iter().filter_map(|f| f).collect::<Vec<_>>();
         if invites.is_empty() {
-            return Ok(None); // 過去に送信されたリンクが無い
+            // 過去に送信されたリンクが無い
+            return Ok(None);
         }
 
         // 警告メッセージを構築
@@ -231,7 +232,7 @@ impl Handler {
             .invite_codes
             .clone()
             .into_iter()
-            .map(|f| HistoryKeyType::InviteCode(f.invite_code.to_string()))
+            .map(|f| HistoryFindKey::InviteCode(f.invite_code.to_string()))
             .collect::<Vec<_>>();
         match self
             .check_invite_history(&ctx, &msg, invite_codes)
@@ -263,7 +264,7 @@ impl Handler {
             .clone()
             .into_iter()
             .filter_map(|f| f.guild_id)
-            .map(|guild_id| HistoryKeyType::InviteGuildId(guild_id))
+            .map(|guild_id| HistoryFindKey::InviteGuildId(guild_id))
             .collect::<Vec<_>>();
         match self
             .check_invite_history(&ctx, &msg, invite_guilds)
@@ -280,7 +281,9 @@ impl Handler {
             .await
             .context("履歴の更新に失敗")?;
         let invite_result = invites.iter().map(|invite| async {
+            // 招待の中からサーバーIDが取れたものを選ぶ
             if let Some(guild_id) = invite.guild_id {
+                // 招待コードを履歴に登録
                 return self
                     .history
                     .insert(HistoryRecord {
@@ -288,7 +291,7 @@ impl Handler {
                         invite_guild_id: guild_id,
                         channel_id: msg.channel_id,
                         message_id: msg.id,
-                        timestamp: msg.timestamp.unix_timestamp(),
+                        timestamp: msg.timestamp.unix_timestamp(), // 現在の時間
                     })
                     .await;
             }
@@ -359,6 +362,7 @@ impl EventHandler for Handler {
         _new: Option<Message>,
         event: MessageUpdateEvent,
     ) {
+        // メッセージIDからメッセージを取得
         let message = match event.channel_id.message(&ctx, event.id).await {
             Ok(message) => message,
             Err(why) => {
@@ -366,6 +370,8 @@ impl EventHandler for Handler {
                 return;
             }
         };
+
+        // メッセージ投稿時と同じ処理を行う
         self.message(ctx, message).await;
     }
 
@@ -377,6 +383,7 @@ impl EventHandler for Handler {
         deleted_message_id: MessageId,
         _guild_id: Option<GuildId>,
     ) {
+        // メッセージIDに対応する履歴を削除
         match self.history.delete(&deleted_message_id).await {
             Ok(_) => (),
             Err(why) => {
@@ -394,6 +401,7 @@ impl EventHandler for Handler {
         multiple_deleted_messages_ids: Vec<MessageId>,
         _guild_id: Option<GuildId>,
     ) {
+        // それぞれのメッセージIDに対応する履歴を削除
         match try_join_all(
             multiple_deleted_messages_ids
                 .iter()
