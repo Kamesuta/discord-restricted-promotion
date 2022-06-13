@@ -1,6 +1,8 @@
-use anyhow::{anyhow, Context as _, Result};
+use anyhow::{Context as _, Result};
 use chrono_tz::Tz::Japan;
 use futures::future::{join_all, try_join_all};
+use serenity::model::event::MessageUpdateEvent;
+use serenity::model::gateway::Ready;
 use tokio::time::{sleep, Duration};
 
 use crate::app_config::AppConfig;
@@ -44,7 +46,7 @@ impl Handler {
             .await
             .with_context(|| format!("警告メッセージの削除に失敗: {:?}", reply))?;
         // 該当メッセージを削除
-        msg.delete(&ctx.http)
+        msg.delete(&ctx)
             .await
             .with_context(|| format!("対象メッセージの削除に失敗: {:?}", msg))?;
 
@@ -70,7 +72,7 @@ impl Handler {
         // 警告メッセージを構築
         let reply = msg
             .channel_id
-            .send_message(&ctx.http, |m| {
+            .send_message(&ctx, |m| {
                 m.reference_message(msg);
                 m.embed(|e| {
                     e.title("宣伝できない招待リンク");
@@ -115,22 +117,29 @@ impl Handler {
                 return None;
             }
 
+            // リンク取得
+            let records = join_all(records.into_iter().map(|record| async {
+                let invite_link = record
+                    .message_id
+                    .link_ensured(&ctx, record.channel_id, None)
+                    .await;
+                (record, invite_link)
+            }))
+            .await;
+
             Some((invite_key, records))
         });
         let invites = join_all(invites).await;
-        let invites: Vec<(HistoryKeyType, Vec<HistoryRecord>)> =
+        let invites: Vec<(HistoryKeyType, Vec<(HistoryRecord, String)>)> =
             invites.into_iter().filter_map(|f| f).collect::<Vec<_>>();
         if invites.is_empty() {
             return Ok(None); // 過去に送信されたリンクが無い
         }
 
-        // ギルドIDを取得
-        let guild_id = msg.guild_id.ok_or(anyhow!("ギルドIDの取得に失敗"))?;
-
         // 警告メッセージを構築
         let reply = msg
             .channel_id
-            .send_message(&ctx.http, |m| {
+            .send_message(&ctx, |m| {
                 m.reference_message(msg);
                 m.embed(|e| {
                     e.title("宣伝済みの招待リンク");
@@ -140,13 +149,8 @@ impl Handler {
                         invites
                             .iter()
                             .flat_map(move |(_invite_key, records)| records.iter())
-                            .map(|record| {
-                                format!(
-                                    "[メッセージリンク](https://discord.com/channels/{}/{}/{})",
-                                    guild_id.to_string(),
-                                    record.channel_id.to_string(),
-                                    record.message_id.to_string(),
-                                )
+                            .map(|(_record, invite_link)| {
+                                format!("[メッセージリンク]({})", invite_link,)
                             })
                             .collect::<Vec<_>>()
                             .join("\n"),
@@ -186,7 +190,7 @@ impl Handler {
         // 警告メッセージを構築
         let reply = msg
             .channel_id
-            .send_message(&ctx.http, |m| {
+            .send_message(&ctx, |m| {
                 m.reference_message(msg);
                 m.embed(|e| {
                     e.title("説明文不足");
@@ -290,6 +294,11 @@ impl Handler {
 
 #[async_trait]
 impl EventHandler for Handler {
+    /// 準備完了時に呼ばれる
+    async fn ready(&self, _ctx: Context, _data_about_bot: Ready) {
+        println!("Bot準備完了");
+    }
+
     /// メッセージが送信された時に呼び出される
     async fn message(&self, ctx: Context, msg: Message) {
         // Botの投稿を無視
@@ -330,5 +339,23 @@ impl EventHandler for Handler {
             println!("警告メッセージの削除に失敗: {}", why);
             return;
         }
+    }
+
+    // メッセージが更新された時に呼び出される
+    async fn message_update(
+        &self,
+        ctx: Context,
+        _old_if_available: Option<Message>,
+        _new: Option<Message>,
+        event: MessageUpdateEvent,
+    ) {
+        let message = match event.channel_id.message(&ctx, event.id).await {
+            Ok(message) => message,
+            Err(why) => {
+                println!("編集されたメッセージの取得に失敗: {}", why);
+                return;
+            }
+        };
+        self.message(ctx, message).await;
     }
 }
