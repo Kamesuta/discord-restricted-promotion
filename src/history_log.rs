@@ -45,7 +45,7 @@ impl HistoryLog {
                 invite_code      VARCHAR(20) NOT NULL UNIQUE,
                 invite_guild_id  VARCHAR(20) NOT NULL,
                 channel_id       VARCHAR(20) NOT NULL,
-                message_id       VARCHAR(20) NOT NULL UNIQUE,
+                message_id       VARCHAR(20) NOT NULL,
                 timestamp        TIMESTAMP NOT NULL
             )",
             params!(),
@@ -69,6 +69,19 @@ impl HistoryLog {
                 record.timestamp,
             ),
         ).with_context(|| format!("履歴データベースへの書き込みに失敗: {:?}", record))?;
+
+        Ok(())
+    }
+
+    pub async fn delete<'t>(&self, message_id: &MessageId) -> Result<()> {
+        self.conn
+            .lock()
+            .await
+            .execute(
+                "DELETE FROM history WHERE message_id = ?1",
+                params!(message_id.to_string(),),
+            )
+            .with_context(|| format!("履歴データベースからの削除に失敗: {:?}", message_id))?;
 
         Ok(())
     }

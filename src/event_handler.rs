@@ -3,6 +3,7 @@ use chrono_tz::Tz::Japan;
 use futures::future::{join_all, try_join_all};
 use serenity::model::event::MessageUpdateEvent;
 use serenity::model::gateway::Ready;
+use serenity::model::id::{ChannelId, GuildId, MessageId};
 use tokio::time::{sleep, Duration};
 
 use crate::app_config::AppConfig;
@@ -274,6 +275,10 @@ impl Handler {
         };
 
         // 警告がない場合、履歴に登録
+        self.history
+            .delete(&msg.id)
+            .await
+            .context("履歴の更新に失敗")?;
         let invite_result = invites.iter().map(|invite| async {
             if let Some(guild_id) = invite.guild_id {
                 return self
@@ -362,5 +367,45 @@ impl EventHandler for Handler {
             }
         };
         self.message(ctx, message).await;
+    }
+
+    /// メッセージが削除された時に呼び出される
+    async fn message_delete(
+        &self,
+        _ctx: Context,
+        _channel_id: ChannelId,
+        deleted_message_id: MessageId,
+        _guild_id: Option<GuildId>,
+    ) {
+        match self.history.delete(&deleted_message_id).await {
+            Ok(_) => (),
+            Err(why) => {
+                println!("履歴の削除に失敗: {:?}", why);
+                return;
+            }
+        }
+    }
+
+    /// 一括削除時に呼び出される (BAN等)
+    async fn message_delete_bulk(
+        &self,
+        _ctx: Context,
+        _channel_id: ChannelId,
+        multiple_deleted_messages_ids: Vec<MessageId>,
+        _guild_id: Option<GuildId>,
+    ) {
+        match try_join_all(
+            multiple_deleted_messages_ids
+                .iter()
+                .map(|message| self.history.delete(message)),
+        )
+        .await
+        {
+            Ok(_) => (),
+            Err(why) => {
+                println!("履歴の削除に失敗: {:?}", why);
+                return;
+            }
+        }
     }
 }
