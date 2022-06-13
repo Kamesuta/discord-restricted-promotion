@@ -1,4 +1,4 @@
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Error, Result};
 use chrono_tz::Tz::Japan;
 use futures::future::{join_all, try_join_all};
 use serenity::model::event::MessageUpdateEvent;
@@ -44,11 +44,12 @@ impl Handler {
         reply
             .delete(&ctx)
             .await
-            .with_context(|| format!("警告メッセージの削除に失敗: {:?}", reply))?;
+            .with_context(|| format!("警告メッセージの削除に失敗: {}", reply.id))?;
         // 該当メッセージを削除
-        msg.delete(&ctx)
+        msg.channel_id
+            .delete_message(&ctx, msg.id)
             .await
-            .with_context(|| format!("対象メッセージの削除に失敗: {:?}", msg))?;
+            .with_context(|| format!("対象メッセージの削除に失敗: {}", msg.id))?;
 
         Ok(())
     }
@@ -105,33 +106,37 @@ impl Handler {
         invites: Vec<HistoryKeyType>,
     ) -> Result<Option<Message>> {
         // 過去ログに同じリンクがないかを検証
-        let invites = invites.into_iter().map(|invite_key| async {
-            let result = self.history.validate(&msg.channel_id, &invite_key).await;
-            let records = match result {
-                Ok(records) if !records.is_empty() => records,
-                _ => return None,
-            };
+        let invites: Vec<Option<(HistoryKeyType, Vec<(HistoryRecord, String)>)>> =
+            try_join_all(invites.into_iter().map(|invite_key| async {
+                let records = self
+                    .history
+                    .validate(&msg.id, &msg.channel_id, &invite_key)
+                    .await?;
 
-            // 空だったらNoneを返す
-            if records.is_empty() {
-                return None;
-            }
+                // 空だったらNoneを返す
+                if records.is_empty() {
+                    return Ok(None);
+                }
 
-            // リンク取得
-            let records = join_all(records.into_iter().map(|record| async {
-                let invite_link = record
-                    .message_id
-                    .link_ensured(&ctx, record.channel_id, None)
+                // リンク取得
+                let records: Vec<(HistoryRecord, String)> =
+                    join_all(records.into_iter().map(|record| async {
+                        let invite_link = record
+                            .message_id
+                            .link_ensured(&ctx, record.channel_id, None)
+                            .await;
+                        (record, invite_link)
+                    }))
                     .await;
-                (record, invite_link)
-            }))
-            .await;
 
-            Some((invite_key, records))
-        });
-        let invites = join_all(invites).await;
-        let invites: Vec<(HistoryKeyType, Vec<(HistoryRecord, String)>)> =
-            invites.into_iter().filter_map(|f| f).collect::<Vec<_>>();
+                // async closureは型を明示できないので、Okのときに型を明示する
+                // https://rust-lang.github.io/async-book/07_workarounds/02_err_in_async_blocks.html
+                Ok::<Option<(HistoryKeyType, Vec<(HistoryRecord, String)>)>, Error>(Some((
+                    invite_key, records,
+                )))
+            }))
+            .await?;
+        let invites = invites.into_iter().filter_map(|f| f).collect::<Vec<_>>();
         if invites.is_empty() {
             return Ok(None); // 過去に送信されたリンクが無い
         }
@@ -336,7 +341,7 @@ impl EventHandler for Handler {
 
         // 一定時間後に警告メッセージを削除
         if let Err(why) = self.wait_and_delete_message(&ctx, &msg, &reply).await {
-            println!("警告メッセージの削除に失敗: {}", why);
+            println!("警告メッセージの削除に失敗: {:?}", why);
             return;
         }
     }
@@ -352,7 +357,7 @@ impl EventHandler for Handler {
         let message = match event.channel_id.message(&ctx, event.id).await {
             Ok(message) => message,
             Err(why) => {
-                println!("編集されたメッセージの取得に失敗: {}", why);
+                println!("編集されたメッセージの取得に失敗: {:?}", why);
                 return;
             }
         };

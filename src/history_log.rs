@@ -75,6 +75,7 @@ impl HistoryLog {
 
     pub async fn validate<'t>(
         &self,
+        event_message_id: &MessageId,
         channel_id: &ChannelId,
         key: &HistoryKeyType,
     ) -> Result<Vec<HistoryRecord>> {
@@ -87,14 +88,19 @@ impl HistoryLog {
                 }
             };
             let query =
-                format!("SELECT invite_code, invite_guild_id, channel_id, message_id, timestamp FROM history WHERE channel_id = ?1 AND {} = ?2 AND timestamp > ?3", search_key);
+                format!("SELECT invite_code, invite_guild_id, channel_id, message_id, timestamp FROM history WHERE message_id != ?1 AND channel_id = ?2 AND {} = ?3 AND timestamp > ?4", search_key);
             let mut stmt = conn
                 .prepare(&query)
                 .with_context(|| format!("SQL文の構築に失敗: {}", query))?;
             let timestamp = (chrono::Utc::now() - Duration::days(self.ban_period_days)).timestamp();
             let result = stmt
                 .query_map(
-                    params!(channel_id.to_string(), search_value, timestamp),
+                    params!(
+                        event_message_id.to_string(),
+                        channel_id.to_string(),
+                        search_value,
+                        timestamp
+                    ),
                     |row| {
                         let invite_code: String = row.get(0)?;
                         let invite_guild_id: String = row.get(1)?;
