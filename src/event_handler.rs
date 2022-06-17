@@ -62,45 +62,77 @@ impl Handler {
         msg: &Message,
         invites: &[DiscordInviteLink<'t>],
     ) -> Result<Option<Message>> {
-        // 無期限の招待コードを除外
+        // 無効な招待コードを集める
+        let invalid_invites = invites
+            .iter()
+            .filter(|x| !x.guild_id.is_some())
+            .collect::<Vec<_>>();
+        // 無効なリンクがある
+        if !invalid_invites.is_empty() {
+            // 警告メッセージを構築
+            let reply = msg
+                .channel_id
+                .send_message(ctx, |m| {
+                    m.reference_message(msg);
+                    m.embed(|e| {
+                        e.title("無効な招待リンク");
+                        e.description("有効な招待リンクのみ宣伝できます");
+                        e.fields(
+                            invalid_invites
+                                .iter()
+                                .map(|x| {
+                                    ("招待コード", format!("`{}`", x.invite_code), false)
+                                }),
+                        );
+                        e
+                    })
+                })
+                .await
+                .context("警告メッセージの構築に失敗")?;
+
+            return Ok(Some(reply));
+        }
+
+        // 期限付きの招待コードを集める
         let expirable_invites = invites
             .iter()
             .filter(|x| x.expires_at.is_some())
             .collect::<Vec<_>>();
-        if expirable_invites.is_empty() {
-            return Ok(None); // 有効期限のあるリンクが無い
+        // 期限付きのリンクがある
+        if !expirable_invites.is_empty() {
+            // 警告メッセージを構築
+            let reply = msg
+                .channel_id
+                .send_message(ctx, |m| {
+                    m.reference_message(msg);
+                    m.embed(|e| {
+                        e.title("宣伝できない招待リンク");
+                        e.description("招待リンクは無期限のものだけ使用できます");
+                        e.fields(
+                            expirable_invites
+                                .iter()
+                                .filter_map(|x| {
+                                    Some((
+                                        x,
+                                        x.expires_at?
+                                            .with_timezone(&Japan)
+                                            .format("%Y年%m月%d日 %H時%M分%S秒"),
+                                    ))
+                                })
+                                .map(|(x, expires_at)| {
+                                    (format!("`{}` の有効期限", x.invite_code), expires_at, false)
+                                }),
+                        );
+                        e
+                    })
+                })
+                .await
+                .context("警告メッセージの構築に失敗")?;
+
+            return Ok(Some(reply));
         }
 
-        // 警告メッセージを構築
-        let reply = msg
-            .channel_id
-            .send_message(ctx, |m| {
-                m.reference_message(msg);
-                m.embed(|e| {
-                    e.title("宣伝できない招待リンク");
-                    e.description("招待リンクは無期限のものだけ使用できます");
-                    e.fields(
-                        expirable_invites
-                            .iter()
-                            .filter_map(|x| {
-                                Some((
-                                    x,
-                                    x.expires_at?
-                                        .with_timezone(&Japan)
-                                        .format("%Y年%m月%d日 %H時%M分%S秒"),
-                                ))
-                            })
-                            .map(|(x, expires_at)| {
-                                (format!("`{}` の有効期限", x.invite_code), expires_at, false)
-                            }),
-                    );
-                    e
-                })
-            })
-            .await
-            .context("警告メッセージの構築に失敗")?;
-
-        Ok(Some(reply))
+        Ok(None)
     }
 
     /// 過去ログに同じリンクがないかを検証
