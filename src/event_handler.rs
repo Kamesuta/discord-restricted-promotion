@@ -217,10 +217,10 @@ impl Handler {
         let link_total_length = finder
             .invite_codes
             .iter()
-            .map(|invite_link| invite_link.invite_link.len())
+            .map(|invite_link| invite_link.invite_link.chars().count())
             .sum::<usize>();
         // メッセージを全体の長さを取得
-        let message_length = msg.content.len();
+        let message_length = msg.content.chars().count();
         // 説明文の長さを計算
         let desc_length = message_length - link_total_length;
         // 長さが足りているかどうかを検証
