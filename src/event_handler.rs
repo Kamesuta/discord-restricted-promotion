@@ -80,9 +80,7 @@ impl Handler {
                         e.fields(
                             invalid_invites
                                 .iter()
-                                .map(|x| {
-                                    ("招待コード", format!("`{}`", x.invite_code), false)
-                                }),
+                                .map(|x| ("招待コード", format!("`{}`", x.invite_code), false)),
                         );
                         e
                     })
@@ -146,10 +144,45 @@ impl Handler {
         type RecordLink = Vec<(HistoryRecord, String)>;
         let invites: Vec<Option<(HistoryFindKey, RecordLink)>> =
             try_join_all(invites.into_iter().map(|invite_key| async {
+                // 履歴データベースから検索
                 let records = self
                     .history
                     .validate(&msg.id, &msg.channel_id, &invite_key)
                     .await?;
+
+                // メッセージが有効なのか検証する
+                let records = try_join_all(
+                    records
+                    .into_iter()
+                    .map(|record| async {
+                        // メッセージをDiscordから取得する
+                        let result = record.channel_id.message(ctx, record.message_id).await;
+
+                        match result {
+                            Ok(_message) => Ok(Some(record)), // メッセージが取得できたら残す
+                            Err(_err) => {
+                                println!(
+                                    "メッセージが削除されているためデータベースから削除します: message_id={}, guild_id={}, invite_code={}",
+                                    record.message_id,
+                                    record.invite_guild_id,
+                                    record.invite_code
+                                );
+
+                                // データベースから削除
+                                self.history.delete(&record.message_id).await?;
+
+                                // async closureは型を明示できないので、Okのときに型を明示する
+                                // https://rust-lang.github.io/async-book/07_workarounds/02_err_in_async_blocks.html
+                                Ok::<Option<HistoryRecord>, Error>(None)
+                            }
+                        }
+                    })
+                )
+                .await?;
+                let records = records
+                    .into_iter()
+                    .filter_map(|record| record)
+                    .collect::<Vec<HistoryRecord>>();
 
                 // 空だったらNoneを返す
                 if records.is_empty() {
