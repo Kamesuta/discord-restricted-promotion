@@ -44,7 +44,7 @@ impl<'t> InviteFinder<'t> {
     pub fn new(message: &'t str) -> Result<InviteFinder<'t>> {
         // 正規表現パターンを準備
         let invite_regex = Regex::new(
-            r"(?:https?://)?(?:discord\.(?:gg|io|me|li)|(?:discord|discordapp)\.com/invite)/(\w+)",
+            r"(?:https?://)?(?:discord\.(?:gg|io|me|li)|(?:discord|discordapp)\.com/invite)/([A-Za-z1-9]+)",
         )
         .context("正規表現のパターンの作成に失敗")?;
 

@@ -269,7 +269,10 @@ impl Handler {
                 m.embed(|e| {
                     e.title("説明文不足");
                     e.description(
-                        "説明文の長さが短すぎます\n説明文でサーバーをアピールしましょう!",
+                        format!(
+                            "説明文の長さが短すぎます\n少なくとも{}文字は説明文が必要です\n説明文でサーバーをアピールしましょう!",
+                            self.app_config.discord.required_message_length,
+                        ),
                     );
                     e
                 })
