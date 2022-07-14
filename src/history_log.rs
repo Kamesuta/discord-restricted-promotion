@@ -4,7 +4,9 @@ use std::sync::Arc;
 use chrono::Duration;
 use futures::lock::Mutex;
 use rusqlite::{params, Connection};
-use serenity::model::id::{ChannelId, GuildId, MessageId};
+use serenity::model::id::{ChannelId, GuildId, MessageId, UserId};
+
+use crate::app_config::BanPeriodConfig;
 
 /// 履歴のレコード
 #[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
@@ -17,6 +19,8 @@ pub struct HistoryRecord {
     pub channel_id: ChannelId,
     /// メッセージID
     pub message_id: MessageId,
+    /// 投稿者のID
+    pub user_id: UserId,
     /// タイムスタンプ
     pub timestamp: i64,
 }
@@ -33,13 +37,13 @@ pub enum HistoryFindKey {
 pub struct HistoryLog {
     /// sql接続情報
     conn: Arc<Mutex<Connection>>,
-    /// 同じ鯖の宣伝を禁止する日数
-    pub ban_period_days: i64,
+    /// 同じ鯖の宣伝を禁止する設定
+    pub ban_period: BanPeriodConfig,
 }
 
 impl HistoryLog {
     /// データベースを初期化する
-    pub fn new(ban_period_days: i64) -> Result<HistoryLog> {
+    pub fn new(ban_period: BanPeriodConfig) -> Result<HistoryLog> {
         // データベースに接続
         let conn =
             Connection::open("bot/history_log.db").context("履歴データベースのオープンに失敗")?;
@@ -52,6 +56,7 @@ impl HistoryLog {
                 invite_guild_id  VARCHAR(20) NOT NULL,
                 channel_id       VARCHAR(20) NOT NULL,
                 message_id       VARCHAR(20) NOT NULL,
+                user_id          VARCHAR(20) NOT NULL,
                 timestamp        TIMESTAMP NOT NULL
             )",
             params!(),
@@ -61,20 +66,21 @@ impl HistoryLog {
         // 初期化
         Ok(HistoryLog {
             conn: Arc::new(Mutex::new(conn)),
-            ban_period_days,
+            ban_period,
         })
     }
 
     // 履歴にレコードを登録する
-    pub async fn insert<'t>(&self, record: HistoryRecord) -> Result<()> {
+    pub async fn insert(&self, record: HistoryRecord) -> Result<()> {
         // データベースに書き込み
         self.conn.lock().await.execute(
-            "REPLACE INTO history (invite_code, invite_guild_id, channel_id, message_id, timestamp) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "REPLACE INTO history (invite_code, invite_guild_id, channel_id, message_id, user_id, timestamp) VALUES (?1, ?2, ?3, ?4, ?5)",
             params!(
                 record.invite_code,
                 record.invite_guild_id.to_string(),
                 record.channel_id.to_string(),
                 record.message_id.to_string(),
+                record.user_id.to_string(),
                 record.timestamp,
             ),
         ).with_context(|| format!("履歴データベースへの書き込みに失敗: {:?}", record))?;
@@ -83,7 +89,7 @@ impl HistoryLog {
     }
 
     // 履歴からレコードを削除
-    pub async fn delete<'t>(&self, message_id: &MessageId) -> Result<()> {
+    pub async fn delete(&self, message_id: &MessageId) -> Result<()> {
         self.conn
             .lock()
             .await
@@ -97,7 +103,7 @@ impl HistoryLog {
     }
 
     // すでに履歴に登録されていないかチェックする
-    pub async fn validate<'t>(
+    pub async fn validate(
         &self,
         event_message_id: &MessageId,
         channel_id: &ChannelId,
@@ -114,13 +120,13 @@ impl HistoryLog {
         };
         // クエリを作成 (prepareでカラムを指定できなかったため、ここで検索キーを埋め込んで指定する)
         let query =
-            format!("SELECT invite_code, invite_guild_id, channel_id, message_id, timestamp FROM history WHERE message_id != ?1 AND channel_id = ?2 AND {} = ?3 AND timestamp > ?4", search_key);
+            format!("SELECT invite_code, invite_guild_id, channel_id, message_id, user_id, timestamp FROM history WHERE message_id != ?1 AND channel_id = ?2 AND {} = ?3 AND timestamp > ?4", search_key);
         // クエリを構築
         let mut stmt = conn
             .prepare(&query)
             .with_context(|| format!("SQL文の構築に失敗: {}", query))?;
         // n日前以降を指定
-        let timestamp = (chrono::Utc::now() - Duration::days(self.ban_period_days)).timestamp();
+        let timestamp = (chrono::Utc::now() - Duration::days(self.ban_period.day)).timestamp();
         // クエリを実行
         let records = stmt
             .query_map(
@@ -136,12 +142,14 @@ impl HistoryLog {
                     let invite_guild_id: String = row.get(1)?;
                     let channel_id: String = row.get(2)?;
                     let message_id: String = row.get(3)?;
-                    let timestamp: i64 = row.get(4)?;
+                    let user_id: String = row.get(4)?;
+                    let timestamp: i64 = row.get(5)?;
                     Ok((
                         invite_code,
                         invite_guild_id,
                         channel_id,
                         message_id,
+                        user_id,
                         timestamp,
                     ))
                 },
@@ -149,13 +157,14 @@ impl HistoryLog {
             .context("履歴データベースの読み込みに失敗")?
             .map(|row| -> Result<HistoryRecord> {
                 // 未パースの文字変数を展開
-                let (invite_code, invite_guild_id, channel_id, message_id, timestamp) = row?;
+                let (invite_code, invite_guild_id, channel_id, message_id, user_id, timestamp) = row?;
                 // パースして構造体を作る
                 Ok(HistoryRecord {
                     invite_code,
                     invite_guild_id: GuildId(invite_guild_id.parse()?),
                     channel_id: ChannelId(channel_id.parse()?),
                     message_id: MessageId(message_id.parse()?),
+                    user_id: UserId(user_id.parse()?),
                     timestamp,
                 })
             })

@@ -3,4 +3,8 @@ channels = [000000000000000000]
 alert_sec = 30
 required_message_length = 30
 ignore_roles = []
-ban_period_days = 7
+
+[discord.ban_period]
+day = 7
+day_per_user = 21
+min_per_user_start = 30

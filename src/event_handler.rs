@@ -26,7 +26,7 @@ impl Handler {
     /// コンストラクタ
     pub fn new(app_config: AppConfig) -> Result<Self> {
         Ok(Self {
-            history: HistoryLog::new(app_config.discord.ban_period_days)?,
+            history: HistoryLog::new(app_config.discord.ban_period.clone())?,
             app_config,
         })
     }
@@ -362,6 +362,7 @@ impl Handler {
                         invite_guild_id: guild_id,
                         channel_id: msg.channel_id,
                         message_id: msg.id,
+                        user_id: msg.author.id,
                         timestamp: msg.timestamp.unix_timestamp(), // 現在の時間
                     })
                     .await;

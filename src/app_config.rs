@@ -2,7 +2,17 @@ use anyhow::{Context as _, Result};
 use config::Config;
 use serenity::model::id::{ChannelId, RoleId};
 
-/// Discordの設定
+/// 同じ鯖の宣伝を禁止する設定
+#[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
+pub struct BanPeriodConfig {
+    /// 同じ鯖の宣伝を禁止する日数
+    pub day: i64,
+    /// 同じユーザーが同じ鯖の宣伝を禁止する日数
+    pub day_per_user: i64,
+    /// 同じユーザーが同じ鯖の宣伝を再投稿できる分数
+    pub min_per_user_start: i64,
+}
+
 #[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
 pub struct DiscordConfig {
     /// Botが動作するチャンネルID
@@ -13,8 +23,8 @@ pub struct DiscordConfig {
     pub required_message_length: usize,
     /// 警告を無視するロールID
     pub ignore_roles: Vec<RoleId>,
-    /// 同じ鯖の宣伝を禁止する日数
-    pub ban_period_days: i64,
+    /// 同じ鯖の宣伝を禁止する設定
+    pub ban_period: BanPeriodConfig,
 }
 
 /// アプリケーションの設定
