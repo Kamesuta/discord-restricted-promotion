@@ -1,10 +1,11 @@
 use anyhow::{Context as _, Error, Result};
-use chrono_tz::Tz::Japan;
+use chrono::{DateTime, Duration, NaiveDateTime, Utc};
+use chrono_tz::Tz::{self, Japan};
 use futures::future::{join_all, try_join_all};
 use serenity::model::event::MessageUpdateEvent;
 use serenity::model::gateway::Ready;
 use serenity::model::id::{ChannelId, GuildId, MessageId};
-use tokio::time::{sleep, Duration};
+use tokio::time::sleep;
 
 use crate::app_config::AppConfig;
 use crate::history_log::{HistoryFindKey, HistoryLog, HistoryRecord};
@@ -39,7 +40,10 @@ impl Handler {
         reply: &Message,
     ) -> Result<()> {
         // 一定時間待つ
-        sleep(Duration::from_secs(self.app_config.discord.alert_sec)).await;
+        sleep(tokio::time::Duration::from_secs(
+            self.app_config.discord.alert_sec,
+        ))
+        .await;
 
         // 警告メッセージを削除
         reply
@@ -150,10 +154,13 @@ impl Handler {
                 // 履歴データベースから検索
                 let records = self
                     .history
-                    .validate(&msg.id, &msg.channel_id, &invite_key)
+                    .validate(&msg.id, &msg.channel_id, &msg.author.id, &invite_key)
                     .await?;
 
-                // メッセージが有効なのか検証する
+                let ban_period_user_start =
+                    (Utc::now() - Duration::minutes(self.app_config.discord.ban_period.min_per_user_start)).timestamp();
+
+                    // メッセージが有効なのか検証する
                 let records = try_join_all(
                     records
                     .into_iter()
@@ -162,7 +169,13 @@ impl Handler {
                         let result = record.channel_id.message(ctx, record.message_id).await;
 
                         match result {
+                            Ok(message) if record.user_id == msg.author.id && record.timestamp > ban_period_user_start => {
+                                // min_per_user_start分以内のメッセージであれば前のメッセージを消す
+                                message.channel_id.delete_message(ctx, message.id).await?;
+                                Ok(None)
+                            },
                             Ok(_message) => Ok(Some(record)), // メッセージが取得できたら残す
+                            Err(_err) if record.deleted => Ok(Some(record)),
                             Err(_err) => {
                                 println!(
                                     "メッセージが削除されているためデータベースから削除します: message_id={}, guild_id={}, invite_code={}",
@@ -220,19 +233,45 @@ impl Handler {
                 m.reference_message(msg);
                 m.embed(|e| {
                     e.title(format!("{0}最近宣伝された鯖は宣伝できません{0}", self.app_config.discord.alert_emoji));
-                    e.description("同じ鯖の招待リンクは送信できません");
-                    e.field(
-                        "以前に宣伝されたメッセージ",
-                        invites
+                    e.description(format!("直近{}日間に他人が宣伝した鯖、及び直近{}日間に自分が宣伝した鯖は宣伝できません\n自分が宣伝した鯖は30分以内であれば再投稿できます", self.app_config.discord.ban_period.day, self.app_config.discord.ban_period.day_per_user));
+                    let history = invites
+                        .iter()
+                        .flat_map(move |(_invite_key, records)| records.iter())
+                        .filter(|(record, _invite_link)| !record.deleted)
+                        .collect::<Vec<&(HistoryRecord, String)>>();
+                    if !history.is_empty() {
+                        // 同じサーバーの宣伝
+                        e.field(
+                            "以前に宣伝されたメッセージ",
+                            history
+                                .iter()
+                                .map(|(_record, invite_link)| {
+                                    format!("[メッセージリンク]({})", invite_link)
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n"),
+                            false,
+                        );
+                    } else {
+                        // 直近の自分が宣伝したサーバー (削除済みメッセージ)
+                        let recent = invites
                             .iter()
                             .flat_map(move |(_invite_key, records)| records.iter())
-                            .map(|(_record, invite_link)| {
-                                format!("[メッセージリンク]({})", invite_link,)
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n"),
-                        false,
-                    );
+                            .filter(|(record, _invite_link)| record.deleted)
+                            .max_by_key(|(_record, _invite_link)| _record.timestamp);
+                        if let Some((record, _invite_link)) = recent {
+                            let date: DateTime<Tz> = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(record.timestamp, 0), Utc).with_timezone(&Japan);
+                            e.field(
+                                format!("直近{}日間に自分がこのサーバーを宣伝しています", self.app_config.discord.ban_period.day_per_user),
+                                format!(
+                                    "{} ({}日前)に宣伝",
+                                    date.format("%Y年%m月%d日 %H時%M分%S秒"),
+                                    (Utc::now().with_timezone(&Japan) - date).num_days(),
+                                ),
+                                false,
+                            );
+                        }
+                    }
                     e
                 })
             })
@@ -367,6 +406,7 @@ impl Handler {
                         message_id: msg.id,
                         user_id: msg.author.id,
                         timestamp: msg.timestamp.unix_timestamp(), // 現在の時間
+                        deleted: false,
                     })
                     .await;
             }
