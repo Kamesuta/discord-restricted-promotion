@@ -325,10 +325,49 @@ impl Handler {
         Ok(Some(reply))
     }
 
+    /// 招待リンクが含まれるか検証する
+    async fn check_has_invite<'t>(
+        &self,
+        ctx: &Context,
+        msg: &Message,
+        finder: &InviteFinder<'t>,
+    ) -> Result<Option<Message>> {
+        // 招待リンクが含まれるか検証する
+        if !finder.invite_codes.is_empty() {
+            return Ok(None);
+        }
+
+        // 警告メッセージを構築
+        let reply = msg
+            .channel_id
+            .send_message(ctx, |m| {
+                m.reference_message(msg);
+                m.embed(|e| {
+                    e.title(format!("{0}Discord鯖の宣伝のみ許可されています{0}", self.app_config.discord.alert_emoji));
+                    e.description("ここはDiscord鯖の宣伝する為のチャンネルです\n少なくとも1つ以上のDiscord招待リンクが必要です");
+                    e
+                })
+            })
+            .await
+            .context("警告メッセージの構築に失敗")?;
+
+        Ok(Some(reply))
+    }
+
     /// 招待メッセージの検証をすべて実行する
     async fn check_invite<'t>(&self, ctx: &Context, msg: &Message) -> Result<Option<Message>> {
         // 招待リンクをパース
         let finder = InviteFinder::new(msg.content.as_str())?;
+
+        // メッセージに招待リンクが含まれているか検証
+        match self
+            .check_has_invite(ctx, msg, &finder)
+            .await
+            .context("招待リンクが含むかの検証に失敗")?
+        {
+            Some(reply) => return Ok(Some(reply)),
+            None => (), // 検証に失敗
+        };
 
         // メッセージを検証
         match self
