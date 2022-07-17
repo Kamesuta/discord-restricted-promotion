@@ -25,6 +25,8 @@ pub struct DiscordConfig {
     pub ignore_roles: Vec<RoleId>,
     /// 同じ鯖の宣伝を禁止する設定
     pub ban_period: BanPeriodConfig,
+    /// 警告の絵文字
+    pub alert_emoji: String,
 }
 
 /// アプリケーションの設定

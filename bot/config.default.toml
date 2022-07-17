@@ -3,6 +3,7 @@ channels = [000000000000000000]
 alert_sec = 30
 required_message_length = 30
 ignore_roles = []
+alert_emoji = "⚠"
 
 [discord.ban_period]
 day = 7

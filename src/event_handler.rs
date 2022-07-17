@@ -104,7 +104,10 @@ impl Handler {
                 .send_message(ctx, |m| {
                     m.reference_message(msg);
                     m.embed(|e| {
-                        e.title("宣伝できない招待リンク");
+                        e.title(format!(
+                            "{0}宣伝できない招待リンク{0}",
+                            self.app_config.discord.alert_emoji
+                        ));
                         e.description("招待リンクは無期限のものだけ使用できます");
                         e.fields(
                             expirable_invites
@@ -216,7 +219,7 @@ impl Handler {
             .send_message(ctx, |m| {
                 m.reference_message(msg);
                 m.embed(|e| {
-                    e.title("宣伝済みの招待リンク");
+                    e.title(format!("{0}最近宣伝された鯖は宣伝できません{0}", self.app_config.discord.alert_emoji));
                     e.description("同じ鯖の招待リンクは送信できません");
                     e.field(
                         "以前に宣伝されたメッセージ",
@@ -267,7 +270,7 @@ impl Handler {
             .send_message(ctx, |m| {
                 m.reference_message(msg);
                 m.embed(|e| {
-                    e.title("説明文不足");
+                    e.title(format!("{0}説明文不足{0}", self.app_config.discord.alert_emoji));
                     e.description(
                         format!(
                             "説明文の長さが短すぎます\n少なくとも{}文字は説明文が必要です\n説明文でサーバーをアピールしましょう!",
