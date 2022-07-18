@@ -78,9 +78,10 @@ impl Handler {
                 .channel_id
                 .send_message(ctx, |m| {
                     m.reference_message(msg);
+                    m.content("招待リンクがリンク切れしています！\n以下の手順で招待リンクを作成して再度投稿してね");
                     m.embed(|e| {
                         e.title("無効な招待リンク");
-                        e.description("有効な招待リンクのみ宣伝できます");
+                        e.description(format!("有効な招待リンクのみ使用できます\n招待リンクの作り方は[こちらをクリック！]({})", self.app_config.discord.message.no_expiration_invite_link_guide));
                         e.fields(
                             invalid_invites
                                 .iter()
@@ -107,12 +108,13 @@ impl Handler {
                 .channel_id
                 .send_message(ctx, |m| {
                     m.reference_message(msg);
+                    m.content("無期限招待リンクを作成しましょう！\n以下の手順で無期限招待リンクを作って再度投稿してね");
                     m.embed(|e| {
                         e.title(format!(
-                            "{0}宣伝できない招待リンク{0}",
+                            "{0}期限付き招待リンクは使用できません{0}",
                             self.app_config.discord.alert_emoji
                         ));
-                        e.description("招待リンクは無期限のものだけ使用できます");
+                        e.description(format!("招待リンクは無期限のものだけ使用できます\n無期限招待リンクの作り方は[こちらをクリック！]({})", self.app_config.discord.message.no_expiration_invite_link_guide));
                         e.fields(
                             expirable_invites
                                 .iter()
@@ -231,6 +233,7 @@ impl Handler {
             .channel_id
             .send_message(ctx, |m| {
                 m.reference_message(msg);
+                m.content("残念、そのサーバーはしばらく宣伝できません。。。");
                 m.embed(|e| {
                     e.title(format!("{0}最近宣伝された鯖は宣伝できません{0}", self.app_config.discord.alert_emoji));
                     e.description(format!("直近{}日間に他人が宣伝した鯖、及び直近{}日間に自分が宣伝した鯖は宣伝できません\n自分が宣伝した鯖は30分以内であれば再投稿できます", self.app_config.discord.ban_period.day, self.app_config.discord.ban_period.day_per_user));
@@ -308,11 +311,12 @@ impl Handler {
             .channel_id
             .send_message(ctx, |m| {
                 m.reference_message(msg);
+                m.content(format!("説明を追加してサーバーをアピールしましょう！\n{}文字以上説明文を書いて再度投稿してね\nがんばれ！", self.app_config.discord.required_message_length));
                 m.embed(|e| {
-                    e.title(format!("{0}説明文不足{0}", self.app_config.discord.alert_emoji));
+                    e.title(format!("{0}説明文が足りません{0}", self.app_config.discord.alert_emoji));
                     e.description(
                         format!(
-                            "説明文の長さが短すぎます\n少なくとも{}文字は説明文が必要です\n説明文でサーバーをアピールしましょう!",
+                            "説明文の長さが短すぎます\n少なくとも{}文字は説明文が必要です",
                             self.app_config.discord.required_message_length,
                         ),
                     );
@@ -342,9 +346,10 @@ impl Handler {
             .channel_id
             .send_message(ctx, |m| {
                 m.reference_message(msg);
+                m.content("Discordサーバーの招待リンクを投稿しましょう！\n以下の手順で招待リンクを作成して再度投稿してね");
                 m.embed(|e| {
                     e.title(format!("{0}Discord鯖の宣伝のみ許可されています{0}", self.app_config.discord.alert_emoji));
-                    e.description("ここはDiscord鯖の宣伝する為のチャンネルです\n少なくとも1つ以上のDiscord招待リンクが必要です");
+                    e.description(format!("ここはDiscord鯖の宣伝する為のチャンネルです\n少なくとも1つ以上のDiscord招待リンクが必要です\n招待リンクの作り方は[こちらをクリック！]({})", self.app_config.discord.message.no_expiration_invite_link_guide));
                     e
                 })
             })

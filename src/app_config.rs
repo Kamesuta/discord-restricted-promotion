@@ -14,6 +14,12 @@ pub struct BanPeriodConfig {
 }
 
 #[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
+pub struct MessageConfig {
+    /// 無期限招待リンクの作成方法紹介ページURL
+    pub no_expiration_invite_link_guide: String,
+}
+
+#[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
 pub struct DiscordConfig {
     /// Botが動作するチャンネルID
     pub channels: Vec<ChannelId>,
@@ -27,6 +33,8 @@ pub struct DiscordConfig {
     pub ban_period: BanPeriodConfig,
     /// 警告の絵文字
     pub alert_emoji: String,
+    /// メッセージ
+    pub message: MessageConfig,
 }
 
 /// アプリケーションの設定

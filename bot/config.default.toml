@@ -9,3 +9,6 @@ alert_emoji = "⚠"
 day = 7
 day_per_user = 21
 min_per_user_start = 30
+
+[discord.message]
+no_expiration_invite_link_guide = "https://discord.com/channels/～/～/～"
