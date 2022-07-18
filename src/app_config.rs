@@ -15,6 +15,8 @@ pub struct BanPeriodConfig {
 
 #[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
 pub struct MessageConfig {
+    /// 言語
+    pub lang: String,
     /// 警告の絵文字
     pub alert_emoji: String,
     /// 無期限招待リンクの作成方法紹介ページURL

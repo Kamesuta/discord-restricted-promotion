@@ -1,4 +1,5 @@
 mod app_config;
+mod app_lang;
 mod event_handler;
 mod history_log;
 mod invite_finder;
@@ -8,8 +9,7 @@ use app_config::AppConfig;
 use event_handler::Handler;
 use std::env;
 
-use serenity::framework::standard::StandardFramework;
-use serenity::prelude::*;
+use serenity::{framework::standard::StandardFramework, prelude::*};
 
 /// メイン処理
 #[tokio::main]
@@ -20,12 +20,18 @@ async fn main() -> Result<()> {
     // 設定ファイルを読み込む
     let app_config = AppConfig::load_config().context("設定ファイルの読み込みに失敗")?;
 
+    // 言語ファイルを読み込む
+    let catalog =
+        app_lang::cat(app_config.message.lang.as_str()).context("言語ファイルの読み込みに失敗")?;
+
     // イベント受信リスナーを構築
-    let handler = Handler::new(app_config).context("イベント受信リスナーの構築に失敗")?;
+    let handler = Handler::new(app_config, catalog).context("イベント受信リスナーの構築に失敗")?;
 
     // 環境変数のトークンを使用してDiscord APIを初期化
     let token = env::var("DISCORD_TOKEN").context("トークンが指定されていません")?;
-    let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::non_privileged()
+        | GatewayIntents::MESSAGE_CONTENT
+        | GatewayIntents::GUILD_MEMBERS;
     let mut client = Client::builder(token, intents)
         .event_handler(handler)
         .framework(framework)

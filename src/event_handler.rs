@@ -2,6 +2,8 @@ use anyhow::{Context as _, Error, Result};
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use chrono_tz::Tz::{self, Japan};
 use futures::future::{join_all, try_join_all};
+use gettext::Catalog;
+use gettext_macros::i18n;
 use serenity::model::event::MessageUpdateEvent;
 use serenity::model::gateway::Ready;
 use serenity::model::id::{ChannelId, GuildId, MessageId};
@@ -19,16 +21,19 @@ use serenity::prelude::*;
 pub struct Handler {
     /// 設定
     app_config: AppConfig,
+    /// 言語
+    catalog: Catalog,
     /// 履歴
     history: HistoryLog,
 }
 
 impl Handler {
     /// コンストラクタ
-    pub fn new(app_config: AppConfig) -> Result<Self> {
+    pub fn new(app_config: AppConfig, catalog: Catalog) -> Result<Self> {
         Ok(Self {
             history: HistoryLog::new(app_config.ban_period.clone())?,
             app_config,
+            catalog,
         })
     }
 

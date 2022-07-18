@@ -10,5 +10,6 @@ day_per_user = 21
 min_per_user_start = 30
 
 [message]
+lang = "ja"
 alert_emoji = "⚠"
 no_expiration_invite_link_guide = "https://discord.com/channels/～/～/～"
