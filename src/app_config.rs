@@ -15,6 +15,8 @@ pub struct BanPeriodConfig {
 
 #[derive(Debug, Default, serde::Deserialize, PartialEq, Clone)]
 pub struct MessageConfig {
+    /// 警告の絵文字
+    pub alert_emoji: String,
     /// 無期限招待リンクの作成方法紹介ページURL
     pub no_expiration_invite_link_guide: String,
 }
@@ -29,12 +31,6 @@ pub struct DiscordConfig {
     pub required_message_length: usize,
     /// 警告を無視するロールID
     pub ignore_roles: Vec<RoleId>,
-    /// 同じ鯖の宣伝を禁止する設定
-    pub ban_period: BanPeriodConfig,
-    /// 警告の絵文字
-    pub alert_emoji: String,
-    /// メッセージ
-    pub message: MessageConfig,
 }
 
 /// アプリケーションの設定
@@ -42,6 +38,10 @@ pub struct DiscordConfig {
 pub struct AppConfig {
     /// Discordの設定
     pub discord: DiscordConfig,
+    /// 同じ鯖の宣伝を禁止する設定
+    pub ban_period: BanPeriodConfig,
+    /// メッセージ
+    pub message: MessageConfig,
 }
 
 impl AppConfig {

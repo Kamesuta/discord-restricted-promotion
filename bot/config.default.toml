@@ -3,12 +3,12 @@ channels = [000000000000000000]
 alert_sec = 30
 required_message_length = 30
 ignore_roles = []
-alert_emoji = "⚠"
 
-[discord.ban_period]
+[ban_period]
 day = 7
 day_per_user = 21
 min_per_user_start = 30
 
-[discord.message]
+[message]
+alert_emoji = "⚠"
 no_expiration_invite_link_guide = "https://discord.com/channels/～/～/～"

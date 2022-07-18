@@ -27,7 +27,7 @@ impl Handler {
     /// コンストラクタ
     pub fn new(app_config: AppConfig) -> Result<Self> {
         Ok(Self {
-            history: HistoryLog::new(app_config.discord.ban_period.clone())?,
+            history: HistoryLog::new(app_config.ban_period.clone())?,
             app_config,
         })
     }
@@ -81,7 +81,7 @@ impl Handler {
                     m.content("招待リンクがリンク切れしています！\n以下の手順で招待リンクを作成して再度投稿してね");
                     m.embed(|e| {
                         e.title("無効な招待リンク");
-                        e.description(format!("有効な招待リンクのみ使用できます\n招待リンクの作り方は[こちらをクリック！]({})", self.app_config.discord.message.no_expiration_invite_link_guide));
+                        e.description(format!("有効な招待リンクのみ使用できます\n招待リンクの作り方は[こちらをクリック！]({})", self.app_config.message.no_expiration_invite_link_guide));
                         e.fields(
                             invalid_invites
                                 .iter()
@@ -112,9 +112,9 @@ impl Handler {
                     m.embed(|e| {
                         e.title(format!(
                             "{0}期限付き招待リンクは使用できません{0}",
-                            self.app_config.discord.alert_emoji
+                            self.app_config.message.alert_emoji
                         ));
-                        e.description(format!("招待リンクは無期限のものだけ使用できます\n無期限招待リンクの作り方は[こちらをクリック！]({})", self.app_config.discord.message.no_expiration_invite_link_guide));
+                        e.description(format!("招待リンクは無期限のものだけ使用できます\n無期限招待リンクの作り方は[こちらをクリック！]({})", self.app_config.message.no_expiration_invite_link_guide));
                         e.fields(
                             expirable_invites
                                 .iter()
@@ -160,7 +160,7 @@ impl Handler {
                     .await?;
 
                 let ban_period_user_start =
-                    (Utc::now() - Duration::minutes(self.app_config.discord.ban_period.min_per_user_start)).timestamp();
+                    (Utc::now() - Duration::minutes(self.app_config.ban_period.min_per_user_start)).timestamp();
 
                     // メッセージが有効なのか検証する
                 let records = try_join_all(
@@ -235,8 +235,8 @@ impl Handler {
                 m.reference_message(msg);
                 m.content("残念、そのサーバーはしばらく宣伝できません。。。");
                 m.embed(|e| {
-                    e.title(format!("{0}最近宣伝された鯖は宣伝できません{0}", self.app_config.discord.alert_emoji));
-                    e.description(format!("直近{}日間に他人が宣伝した鯖、及び直近{}日間に自分が宣伝した鯖は宣伝できません\n自分が宣伝した鯖は30分以内であれば再投稿できます", self.app_config.discord.ban_period.day, self.app_config.discord.ban_period.day_per_user));
+                    e.title(format!("{0}最近宣伝された鯖は宣伝できません{0}", self.app_config.message.alert_emoji));
+                    e.description(format!("直近{}日間に他人が宣伝した鯖、及び直近{}日間に自分が宣伝した鯖は宣伝できません\n自分が宣伝した鯖は30分以内であれば再投稿できます", self.app_config.ban_period.day, self.app_config.ban_period.day_per_user));
                     let history = invites
                         .iter()
                         .flat_map(move |(_invite_key, records)| records.iter())
@@ -265,7 +265,7 @@ impl Handler {
                         if let Some((record, _invite_link)) = recent {
                             let date: DateTime<Tz> = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(record.timestamp, 0), Utc).with_timezone(&Japan);
                             e.field(
-                                format!("直近{}日間に自分がこのサーバーを宣伝しています", self.app_config.discord.ban_period.day_per_user),
+                                format!("直近{}日間に自分がこのサーバーを宣伝しています", self.app_config.ban_period.day_per_user),
                                 format!(
                                     "{} ({}日前)に宣伝",
                                     date.format("%Y年%m月%d日 %H時%M分%S秒"),
@@ -313,7 +313,7 @@ impl Handler {
                 m.reference_message(msg);
                 m.content(format!("説明を追加してサーバーをアピールしましょう！\n{}文字以上説明文を書いて再度投稿してね\nがんばれ！", self.app_config.discord.required_message_length));
                 m.embed(|e| {
-                    e.title(format!("{0}説明文が足りません{0}", self.app_config.discord.alert_emoji));
+                    e.title(format!("{0}説明文が足りません{0}", self.app_config.message.alert_emoji));
                     e.description(
                         format!(
                             "説明文の長さが短すぎます\n少なくとも{}文字は説明文が必要です",
@@ -348,8 +348,8 @@ impl Handler {
                 m.reference_message(msg);
                 m.content("Discordサーバーの招待リンクを投稿しましょう！\n以下の手順で招待リンクを作成して再度投稿してね");
                 m.embed(|e| {
-                    e.title(format!("{0}Discord鯖の宣伝のみ許可されています{0}", self.app_config.discord.alert_emoji));
-                    e.description(format!("ここはDiscord鯖の宣伝する為のチャンネルです\n少なくとも1つ以上のDiscord招待リンクが必要です\n招待リンクの作り方は[こちらをクリック！]({})", self.app_config.discord.message.no_expiration_invite_link_guide));
+                    e.title(format!("{0}Discord鯖の宣伝のみ許可されています{0}", self.app_config.message.alert_emoji));
+                    e.description(format!("ここはDiscord鯖の宣伝する為のチャンネルです\n少なくとも1つ以上のDiscord招待リンクが必要です\n招待リンクの作り方は[こちらをクリック！]({})", self.app_config.message.no_expiration_invite_link_guide));
                     e
                 })
             })
