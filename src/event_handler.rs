@@ -54,12 +54,12 @@ impl Handler {
         reply
             .delete(ctx)
             .await
-            .with_context(|| format!("警告メッセージの削除に失敗: {}", reply.id))?;
+            .with_context(|| i18n!(self.catalog, context = "error.delete_alert_message", "警告メッセージの削除に失敗: {}"; reply.id))?;
         // 該当メッセージを削除
         msg.channel_id
             .delete_message(ctx, msg.id)
             .await
-            .with_context(|| format!("対象メッセージの削除に失敗: {}", msg.id))?;
+            .with_context(|| i18n!(self.catalog, context = "error.delete_target_message", "対象メッセージの削除に失敗: {}"; msg.id))?;
 
         Ok(())
     }
@@ -96,7 +96,7 @@ impl Handler {
                     })
                 })
                 .await
-                .context("警告メッセージの構築に失敗")?;
+                .context(i18n!(self.catalog, context = "error.build_alert_message", "警告メッセージの構築に失敗"))?;
 
             return Ok(Some(reply));
         }
@@ -139,7 +139,7 @@ impl Handler {
                     })
                 })
                 .await
-                .context("警告メッセージの構築に失敗")?;
+                .context(i18n!(self.catalog, context = "error.build_alert_message", "警告メッセージの構築に失敗"))?;
 
             return Ok(Some(reply));
         }
@@ -184,12 +184,14 @@ impl Handler {
                             Ok(_message) => Ok(Some(record)), // メッセージが取得できたら残す
                             Err(_err) if record.deleted => Ok(Some(record)),
                             Err(_err) => {
-                                println!(
-                                    "メッセージが削除されているためデータベースから削除します: message_id={}, guild_id={}, invite_code={}",
+                                println!("{}", i18n!(
+                                    self.catalog,
+                                    context = "info.delete_record_not_exist_message",
+                                    "メッセージが削除されているためデータベースから削除します: message_id={}, guild_id={}, invite_code={}";
                                     record.message_id,
                                     record.invite_guild_id,
-                                    record.invite_code
-                                );
+                                    record.invite_code,
+                                ));
 
                                 // データベースから削除
                                 self.history.delete(&record.message_id).await?;
@@ -284,7 +286,7 @@ impl Handler {
                 })
             })
             .await
-            .context("警告メッセージの構築に失敗")?;
+            .context(i18n!(self.catalog, context = "error.build_alert_message", "警告メッセージの構築に失敗"))?;
 
         Ok(Some(reply))
     }
@@ -329,7 +331,7 @@ impl Handler {
                 })
             })
             .await
-            .context("警告メッセージの構築に失敗")?;
+            .context(i18n!(self.catalog, context = "error.build_alert_message", "警告メッセージの構築に失敗"))?;
 
         Ok(Some(reply))
     }
@@ -359,7 +361,7 @@ impl Handler {
                 })
             })
             .await
-            .context("警告メッセージの構築に失敗")?;
+            .context(i18n!(self.catalog, context = "error.build_alert_message", "警告メッセージの構築に失敗"))?;
 
         Ok(Some(reply))
     }
@@ -373,8 +375,11 @@ impl Handler {
         match self
             .check_has_invite(ctx, msg, &finder)
             .await
-            .context("招待リンクが含むかの検証に失敗")?
-        {
+            .context(i18n!(
+                self.catalog,
+                context = "error.validate_has_invite",
+                "招待リンクが含むかの検証に失敗"
+            ))? {
             Some(reply) => return Ok(Some(reply)),
             None => (), // 検証に失敗
         };
@@ -383,8 +388,11 @@ impl Handler {
         match self
             .check_invite_message(ctx, msg, &finder)
             .await
-            .context("メッセージ長さの検証に失敗")?
-        {
+            .context(i18n!(
+                self.catalog,
+                context = "error.validate_message_length",
+                "メッセージ長さの検証に失敗"
+            ))? {
             Some(reply) => return Ok(Some(reply)),
             None => (), // 検証に失敗
         };
@@ -399,24 +407,31 @@ impl Handler {
         match self
             .check_invite_history(ctx, msg, invite_codes)
             .await
-            .context("過去の招待コードの検証に失敗")?
-        {
+            .context(i18n!(
+                self.catalog,
+                context = "error.validate_invite_history",
+                "過去の招待コードの検証に失敗"
+            ))? {
             Some(reply) => return Ok(Some(reply)),
             None => (), // 検証に失敗
         };
 
         // 招待コードリストを取得
-        let invites = finder
-            .get_invite_list()
-            .await
-            .context("招待リンク情報の取得に失敗")?;
+        let invites = finder.get_invite_list().await.context(i18n!(
+            self.catalog,
+            context = "error.get_invite_info",
+            "招待リンク情報の取得に失敗"
+        ))?;
 
         // 招待コードを検証
         match self
             .check_invite_links(ctx, msg, &invites)
             .await
-            .context("招待コード期限の検証に失敗")?
-        {
+            .context(i18n!(
+                self.catalog,
+                context = "error.validate_invite_expiration",
+                "招待コード期限の検証に失敗"
+            ))? {
             Some(reply) => return Ok(Some(reply)),
             None => (), // 検証に失敗
         };
@@ -431,17 +446,21 @@ impl Handler {
         match self
             .check_invite_history(ctx, msg, invite_guilds)
             .await
-            .context("過去の招待サーバーの検証に失敗")?
-        {
+            .context(i18n!(
+                self.catalog,
+                context = "error.validate_invite_history",
+                "過去の招待サーバーの検証に失敗"
+            ))? {
             Some(reply) => return Ok(Some(reply)),
             None => (), // 検証に失敗
         };
 
         // 警告がない場合、履歴に登録
-        self.history
-            .delete(&msg.id)
-            .await
-            .context("履歴の更新に失敗")?;
+        self.history.delete(&msg.id).await.context(i18n!(
+            self.catalog,
+            context = "error.update_history",
+            "履歴の更新に失敗"
+        ))?;
         let invite_result = invites.iter().map(|invite| async {
             // 招待の中からサーバーIDが取れたものを選ぶ
             if let Some(guild_id) = invite.guild_id {
@@ -461,9 +480,11 @@ impl Handler {
             }
             Ok(())
         });
-        try_join_all(invite_result)
-            .await
-            .context("履歴の登録に失敗")?;
+        try_join_all(invite_result).await.context(i18n!(
+            self.catalog,
+            context = "error.insert_history",
+            "履歴の登録に失敗"
+        ))?;
 
         Ok(None)
     }
@@ -473,7 +494,10 @@ impl Handler {
 impl EventHandler for Handler {
     /// 準備完了時に呼ばれる
     async fn ready(&self, _ctx: Context, _data_about_bot: Ready) {
-        println!("Bot準備完了");
+        println!(
+            "{}",
+            i18n!(self.catalog, context = "info.bot_ready", "Bot準備完了")
+        );
     }
 
     /// メッセージが送信された時に呼び出される
@@ -506,14 +530,30 @@ impl EventHandler for Handler {
             Ok(None) => return,       // 警告なし
             Err(why) => {
                 // エラー
-                println!("検証に失敗: {:?}", why);
+                println!(
+                    "{}",
+                    i18n!(
+                        self.catalog,
+                        context = "error.validate_invite",
+                        "検証に失敗: {:?}";
+                        why,
+                    )
+                );
                 return;
             }
         };
 
         // 一定時間後に警告メッセージを削除
         if let Err(why) = self.wait_and_delete_message(&ctx, &msg, &reply).await {
-            println!("警告メッセージの削除に失敗: {:?}", why);
+            println!(
+                "{}",
+                i18n!(
+                    self.catalog,
+                    context = "error.delete_after_warning",
+                    "警告メッセージの削除に失敗: {:?}";
+                    why,
+                )
+            );
             return;
         }
     }
@@ -530,7 +570,15 @@ impl EventHandler for Handler {
         let message = match event.channel_id.message(&ctx, event.id).await {
             Ok(message) => message,
             Err(why) => {
-                println!("編集されたメッセージの取得に失敗: {:?}", why);
+                println!(
+                    "{}",
+                    i18n!(
+                        self.catalog,
+                        context = "error.get_edited_message",
+                        "編集されたメッセージの取得に失敗: {:?}";
+                        why,
+                    )
+                );
                 return;
             }
         };
@@ -551,7 +599,15 @@ impl EventHandler for Handler {
         match self.history.delete(&deleted_message_id).await {
             Ok(_) => (),
             Err(why) => {
-                println!("履歴の削除に失敗: {:?}", why);
+                println!(
+                    "{}",
+                    i18n!(
+                        self.catalog,
+                        context = "error.delete_record_on_message_deleted",
+                        "履歴の削除に失敗: {:?}";
+                        why,
+                    )
+                );
                 return;
             }
         }
@@ -575,7 +631,15 @@ impl EventHandler for Handler {
         {
             Ok(_) => (),
             Err(why) => {
-                println!("履歴の削除に失敗: {:?}", why);
+                println!(
+                    "{}",
+                    i18n!(
+                        self.catalog,
+                        context = "error.delete_record_on_message_bulk_deleted",
+                        "履歴の一括削除に失敗: {:?}";
+                        why,
+                    )
+                );
                 return;
             }
         }
