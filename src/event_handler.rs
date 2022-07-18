@@ -2,9 +2,13 @@ use anyhow::{Context as _, Error, Result};
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use chrono_tz::Tz::{self, Japan};
 use futures::future::{join_all, try_join_all};
-use serenity::model::event::MessageUpdateEvent;
-use serenity::model::gateway::Ready;
-use serenity::model::id::{ChannelId, GuildId, MessageId};
+use serenity::model::{
+    event::MessageUpdateEvent,
+    gateway::Ready,
+    guild::Member,
+    id::{ChannelId, GuildId, MessageId},
+    user::User,
+};
 use tokio::time::sleep;
 
 use crate::app_config::AppConfig;
@@ -446,6 +450,7 @@ impl Handler {
                     .insert(HistoryRecord {
                         invite_code: invite.invite_code.to_string(),
                         invite_guild_id: guild_id,
+                        guild_id: msg.guild_id,
                         channel_id: msg.channel_id,
                         message_id: msg.id,
                         user_id: msg.author.id,
@@ -574,5 +579,47 @@ impl EventHandler for Handler {
                 return;
             }
         }
+    }
+
+    /// ユーザーが鯖を抜ける、またはキック/BANされた時に呼び出される
+    async fn guild_member_removal(
+        &self,
+        ctx: Context,
+        guild_id: GuildId,
+        user: User,
+        _member_data_if_available: Option<Member>,
+    ) {
+        // データベースからユーザーの宣伝を検索しメッセージを削除する
+        let records = match self
+            .history
+            .get_records_by_user(&Some(guild_id), &user.id)
+            .await
+        {
+            Ok(records) => records,
+            Err(why) => {
+                println!("ユーザー履歴の取得に失敗: {:?}", why);
+                return;
+            }
+        };
+
+        // 履歴を削除
+        match try_join_all(records.iter().map(|record| async {
+            // Discordのメッセージを削除
+            record
+                .channel_id
+                .delete_message(&ctx, record.message_id)
+                .await?;
+            // レコードを削除
+            self.history.delete(&record.message_id).await?;
+            Ok::<(), Error>(())
+        }))
+        .await
+        {
+            Ok(_) => (),
+            Err(why) => {
+                println!("ユーザーの投稿の全削除に失敗: {:?}", why);
+                return;
+            }
+        };
     }
 }
