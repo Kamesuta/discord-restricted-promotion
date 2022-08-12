@@ -473,8 +473,8 @@ impl Handler {
 #[async_trait]
 impl EventHandler for Handler {
     /// 準備完了時に呼ばれる
-    async fn ready(&self, _ctx: Context, _data_about_bot: Ready) {
-        warn!("Bot準備完了");
+    async fn ready(&self, _ctx: Context, data_about_bot: Ready) {
+        warn!("Bot準備完了: {}", data_about_bot.user.tag());
     }
 
     /// メッセージが送信された時に呼び出される
