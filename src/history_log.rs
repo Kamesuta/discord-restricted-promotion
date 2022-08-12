@@ -47,10 +47,10 @@ pub struct HistoryLog {
 
 impl HistoryLog {
     /// データベースを初期化する
-    pub fn new(ban_period: BanPeriodConfig) -> Result<HistoryLog> {
+    pub fn new(basedir: &str, ban_period: BanPeriodConfig) -> Result<HistoryLog> {
         // データベースに接続
         let conn =
-            Connection::open("bot/history_log.db").context("履歴データベースのオープンに失敗")?;
+            Connection::open(format!("{}/history_log.db", basedir)).context("履歴データベースのオープンに失敗")?;
 
         // テーブルを作成
         conn.execute(

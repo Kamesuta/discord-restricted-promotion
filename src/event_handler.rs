@@ -2,6 +2,7 @@ use anyhow::{Context as _, Error, Result};
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use chrono_tz::Tz::{self, Japan};
 use futures::future::{join_all, try_join_all};
+use log::{error, warn};
 use serenity::model::{
     event::MessageUpdateEvent,
     gateway::Ready,
@@ -29,10 +30,10 @@ pub struct Handler {
 
 impl Handler {
     /// コンストラクタ
-    pub fn new(app_config: AppConfig) -> Result<Self> {
+    pub fn new(app_config: AppConfig, history: HistoryLog) -> Result<Self> {
         Ok(Self {
-            history: HistoryLog::new(app_config.ban_period.clone())?,
             app_config,
+            history,
         })
     }
 
@@ -183,7 +184,7 @@ impl Handler {
                             Ok(_message) => Ok(Some(record)), // メッセージが取得できたら残す
                             Err(_err) if record.deleted => Ok(Some(record)),
                             Err(_err) => {
-                                println!(
+                                error!(
                                     "メッセージが削除されているためデータベースから削除します: message_id={}, guild_id={}, invite_code={}",
                                     record.message_id,
                                     record.invite_guild_id,
@@ -473,7 +474,7 @@ impl Handler {
 impl EventHandler for Handler {
     /// 準備完了時に呼ばれる
     async fn ready(&self, _ctx: Context, _data_about_bot: Ready) {
-        println!("Bot準備完了");
+        warn!("Bot準備完了");
     }
 
     /// メッセージが送信された時に呼び出される
@@ -506,14 +507,14 @@ impl EventHandler for Handler {
             Ok(None) => return,       // 警告なし
             Err(why) => {
                 // エラー
-                println!("検証に失敗: {:?}", why);
+                error!("検証に失敗: {:?}", why);
                 return;
             }
         };
 
         // 一定時間後に警告メッセージを削除
         if let Err(why) = self.wait_and_delete_message(&ctx, &msg, &reply).await {
-            println!("警告メッセージの削除に失敗: {:?}", why);
+            error!("警告メッセージの削除に失敗: {:?}", why);
             return;
         }
     }
@@ -530,7 +531,7 @@ impl EventHandler for Handler {
         let message = match event.channel_id.message(&ctx, event.id).await {
             Ok(message) => message,
             Err(why) => {
-                println!("編集されたメッセージの取得に失敗: {:?}", why);
+                error!("編集されたメッセージの取得に失敗: {:?}", why);
                 return;
             }
         };
@@ -551,7 +552,7 @@ impl EventHandler for Handler {
         match self.history.delete(&deleted_message_id).await {
             Ok(_) => (),
             Err(why) => {
-                println!("履歴の削除に失敗: {:?}", why);
+                error!("履歴の削除に失敗: {:?}", why);
                 return;
             }
         }
@@ -575,7 +576,7 @@ impl EventHandler for Handler {
         {
             Ok(_) => (),
             Err(why) => {
-                println!("履歴の削除に失敗: {:?}", why);
+                error!("履歴の削除に失敗: {:?}", why);
                 return;
             }
         }
@@ -597,7 +598,7 @@ impl EventHandler for Handler {
         {
             Ok(records) => records,
             Err(why) => {
-                println!("ユーザー履歴の取得に失敗: {:?}", why);
+                error!("ユーザー履歴の取得に失敗: {:?}", why);
                 return;
             }
         };
@@ -617,7 +618,7 @@ impl EventHandler for Handler {
         {
             Ok(_) => (),
             Err(why) => {
-                println!("ユーザーの投稿の全削除に失敗: {:?}", why);
+                error!("ユーザーの投稿の全削除に失敗: {:?}", why);
                 return;
             }
         };
