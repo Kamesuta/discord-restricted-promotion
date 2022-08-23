@@ -14,9 +14,17 @@ futures = "0.3.21"
 log = "0.4.17"
 log4rs = "1.1.1"
 regex = "1.5.6"
-reqwest = { version = "0.11.10", features = ["json"] }
-rusqlite = { version = "0.27.0", features = ["bundled"] }
+reqwest = {version = "0.11.10", features = ["json"]}
+rusqlite = {version = "0.27.0", features = ["bundled"]}
 serde = "1.0.137"
 serde_json = "1.0.81"
-serenity = "0.11.2"
+serenity = {version = "0.11.2", default-features = false, features = [
+  "cache",
+  "chrono",
+  "client",
+  "gateway",
+  "model",
+  "http",
+  "rustls_backend",
+]}
 tokio = {version = "1.18.2", features = ["rt-multi-thread"]}

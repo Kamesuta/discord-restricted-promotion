@@ -9,7 +9,6 @@ use event_handler::Handler;
 use history_log::HistoryLog;
 use std::env;
 
-use serenity::framework::standard::StandardFramework;
 use serenity::prelude::*;
 
 /// メイン処理
@@ -20,9 +19,6 @@ async fn main() -> Result<()> {
     // ログを初期化
     log4rs::init_file(format!("{}/log4rs.yml", basedir), Default::default())
         .context("log4rsの設定ファイルの読み込みに失敗")?;
-
-    // フレームワークを初期化
-    let framework = StandardFramework::new().configure(|c| c.prefix("~"));
 
     // 設定ファイルを読み込む
     let app_config = AppConfig::load_config(&basedir).context("設定ファイルの読み込みに失敗")?;
@@ -40,7 +36,6 @@ async fn main() -> Result<()> {
         | GatewayIntents::GUILD_MEMBERS;
     let mut client = Client::builder(token, intents)
         .event_handler(handler)
-        .framework(framework)
         .await
         .context("Botの初期化に失敗")?;
 
