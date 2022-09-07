@@ -92,6 +92,11 @@ impl Handler {
                                 .iter()
                                 .map(|x| ("招待コード", format!("`{}`", x.invite_code), false)),
                         );
+                        e.field(
+                            format!("投稿を{}秒以内にコピーしてください！", self.app_config.discord.alert_sec),
+                            format!("あなたの投稿は{}秒後に削除されます。メッセージの編集機能は使用せずメモ帳などにコピーして修正後、再投稿してください", self.app_config.discord.alert_sec),
+                            false
+                        );
                         e
                     })
                 })
@@ -134,6 +139,11 @@ impl Handler {
                                 .map(|(x, expires_at)| {
                                     (format!("`{}` の有効期限", x.invite_code), expires_at, false)
                                 }),
+                        );
+                        e.field(
+                            format!("投稿を{}秒以内にコピーしてください！", self.app_config.discord.alert_sec),
+                            format!("あなたの投稿は{}秒後に削除されます。メッセージの編集機能は使用せずメモ帳などにコピーして修正後、再投稿してください", self.app_config.discord.alert_sec),
+                            false
                         );
                         e
                     })
@@ -242,6 +252,21 @@ impl Handler {
                 m.embed(|e| {
                     e.title(format!("{0}最近宣伝された鯖は宣伝できません{0}", self.app_config.message.alert_emoji));
                     e.description(format!("直近{}日間に他人が宣伝した鯖、及び直近{}日間に自分が宣伝した鯖は宣伝できません\n自分が宣伝した鯖は30分以内であれば再投稿できます", self.app_config.ban_period.day, self.app_config.ban_period.day_per_user));
+                    let now = Utc::now().with_timezone(&Japan);
+                    // 直近の一番期限が遠いものを取得
+                    let recent_sent = invites
+                        .iter()
+                        .flat_map(move |(_invite_key, records)| records.iter())
+                        .map(|(record, _invite_link)| {
+                            let days = if record.user_id == msg.author.id {
+                                self.app_config.ban_period.day_per_user
+                            } else {
+                                self.app_config.ban_period.day
+                            };
+                            NaiveDateTime::from_timestamp(record.timestamp, 0) + Duration::days(days)
+                        })
+                        .max();
+                    // 消されていない同じ鯖の宣伝メッセージを表示
                     let history = invites
                         .iter()
                         .flat_map(move |(_invite_key, records)| records.iter())
@@ -260,6 +285,18 @@ impl Handler {
                                 .join("\n"),
                             false,
                         );
+                        if let Some(recent_sent) = recent_sent {
+                            let due_date: DateTime<Tz> = DateTime::<Utc>::from_utc(recent_sent, Utc).with_timezone(&Japan);
+                            e.field(
+                                "以下の日付を過ぎたら投稿可能です",
+                                format!(
+                                    "{} ({}日後)に宣伝可能",
+                                    due_date.format("%Y年%m月%d日 %H時%M分%S秒"),
+                                    (due_date - now).num_days() + 1,
+                                ),
+                                false,
+                            );
+                        }
                     } else {
                         // 直近の自分が宣伝したサーバー (削除済みメッセージ)
                         let recent = invites
@@ -274,7 +311,19 @@ impl Handler {
                                 format!(
                                     "{} ({}日前)に宣伝",
                                     date.format("%Y年%m月%d日 %H時%M分%S秒"),
-                                    (Utc::now().with_timezone(&Japan) - date).num_days(),
+                                    (now - date).num_days(),
+                                ),
+                                false,
+                            );
+                        }
+                        if let Some(recent_sent) = recent_sent {
+                            let due_date: DateTime<Tz> = DateTime::<Utc>::from_utc(recent_sent, Utc).with_timezone(&Japan);
+                            e.field(
+                                "以下の日付を過ぎたら投稿可能です",
+                                format!(
+                                    "{} ({}日後)に宣伝可能",
+                                    due_date.format("%Y年%m月%d日 %H時%M分%S秒"),
+                                    (due_date - now).num_days() + 1,
                                 ),
                                 false,
                             );
@@ -325,6 +374,11 @@ impl Handler {
                             self.app_config.discord.required_message_length,
                         ),
                     );
+                    e.field(
+                        format!("投稿を{}秒以内にコピーしてください！", self.app_config.discord.alert_sec),
+                        format!("あなたの投稿は{}秒後に削除されます。メッセージの編集機能は使用せずメモ帳などにコピーして修正後、再投稿してください", self.app_config.discord.alert_sec),
+                        false
+                    );
                     e
                 })
             })
@@ -355,6 +409,11 @@ impl Handler {
                 m.embed(|e| {
                     e.title(format!("{0}Discord鯖の宣伝のみ許可されています{0}", self.app_config.message.alert_emoji));
                     e.description(format!("ここはDiscord鯖の宣伝する為のチャンネルです\n少なくとも1つ以上のDiscord招待リンクが必要です\n招待リンクの作り方は[こちらをクリック！]({})", self.app_config.message.no_expiration_invite_link_guide));
+                    e.field(
+                        format!("投稿を{}秒以内にコピーしてください！", self.app_config.discord.alert_sec),
+                        format!("あなたの投稿は{}秒後に削除されます。メッセージの編集機能は使用せずメモ帳などにコピーして修正後、再投稿してください", self.app_config.discord.alert_sec),
+                        false
+                    );
                     e
                 })
             })
