@@ -246,8 +246,8 @@ impl HistoryLog {
                         AND ?6 < timestamp
                     )
                     OR (
-                        ?7 < timestamp
-                        AND deleted = 0
+                        user_id != ?4
+                        AND ?7 < timestamp
                     )
                 )",
             search_key

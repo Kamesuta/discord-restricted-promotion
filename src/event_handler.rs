@@ -243,6 +243,43 @@ impl Handler {
             return Ok(None);
         }
 
+        let now = Utc::now().with_timezone(&Japan);
+        // 直近の一番期限が遠いものを取得
+        let invites_due = {
+            let mut invites_due = invites
+                .iter()
+                .flat_map(move |(_invite_key, records)| records.iter())
+                .map(|(record, invite_link)| {
+                    let days = if record.user_id == msg.author.id {
+                        self.app_config.ban_period.day_per_user
+                    } else {
+                        self.app_config.ban_period.day
+                    };
+                    let due =
+                        NaiveDateTime::from_timestamp(record.timestamp, 0) + Duration::days(days);
+                    (record, invite_link, due, days)
+                })
+                .collect::<Vec<(&HistoryRecord, &String, NaiveDateTime, i64)>>();
+            invites_due.sort_by_key(|(_record, _invite_link, due, _days)| *due);
+            invites_due
+        };
+        // 直近の一番期限が遠いものを取得
+        let recent_sent = invites_due
+            .iter()
+            .max_by_key(|(_record, _invite_link, due, _days)| due.timestamp());
+        // 誰が宣伝したかを取得
+        let who: Option<String> = match recent_sent {
+            Some((record, _invite_link, _due, _days)) => {
+                if record.user_id == msg.author.id {
+                    Some("あなた".to_string())
+                } else {
+                    let user = record.user_id.to_user(&ctx).await.ok();
+                    user.map(|user| format!("`{}`", user.name))
+                }
+            }
+            None => None,
+        };
+
         // 警告メッセージを構築
         let reply = msg
             .channel_id
@@ -252,82 +289,48 @@ impl Handler {
                 m.embed(|e| {
                     e.title(format!("{0}最近宣伝された鯖は宣伝できません{0}", self.app_config.message.alert_emoji));
                     e.description(format!("直近{}日間に他人が宣伝した鯖、及び直近{}日間に自分が宣伝した鯖は宣伝できません\n自分が宣伝した鯖は30分以内であれば再投稿できます", self.app_config.ban_period.day, self.app_config.ban_period.day_per_user));
-                    let now = Utc::now().with_timezone(&Japan);
-                    // 直近の一番期限が遠いものを取得
-                    let recent_sent = invites
-                        .iter()
-                        .flat_map(move |(_invite_key, records)| records.iter())
-                        .map(|(record, _invite_link)| {
-                            let days = if record.user_id == msg.author.id {
-                                self.app_config.ban_period.day_per_user
-                            } else {
-                                self.app_config.ban_period.day
-                            };
-                            NaiveDateTime::from_timestamp(record.timestamp, 0) + Duration::days(days)
-                        })
-                        .max();
-                    // 消されていない同じ鯖の宣伝メッセージを表示
-                    let history = invites
-                        .iter()
-                        .flat_map(move |(_invite_key, records)| records.iter())
-                        .filter(|(record, _invite_link)| !record.deleted)
-                        .collect::<Vec<&(HistoryRecord, String)>>();
-                    if !history.is_empty() {
-                        // 同じサーバーの宣伝
+                    if let Some((record, _invite_link, due, days)) = recent_sent {
+                        let date: DateTime<Tz> = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(record.timestamp, 0), Utc).with_timezone(&Japan);
+                        let who = who.unwrap_or("誰か".to_string());
+                        // 一番最新の宣伝
+                        e.field(
+                            format!("直近{days}日間に{who}がこのサーバーを宣伝しています"),
+                            format!(
+                                "{} ({}日前)に宣伝",
+                                date.format("%Y年%m月%d日 %H時%M分%S秒"),
+                                (now - date).num_days(),
+                            ),
+                            false,
+                        );
+                        // 履歴
                         e.field(
                             "以前に宣伝されたメッセージ",
-                            history
+                            invites_due
                                 .iter()
-                                .map(|(_record, invite_link)| {
-                                    format!("[メッセージリンク]({})", invite_link)
+                                .map(|(record, invite_link, _due, _days)| {
+                                    let date: DateTime<Tz> = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(record.timestamp, 0), Utc).with_timezone(&Japan);
+                                    let date_message = date.format("%Y年%m月%d日 %H時%M分%S秒");
+                                    if record.deleted {
+                                        format!("{}による削除済みの投稿 ({date_message})", record.user_id.mention())
+                                    } else {
+                                        format!("[メッセージリンク]({invite_link}) ({date_message})")
+                                    }
                                 })
                                 .collect::<Vec<_>>()
                                 .join("\n"),
                             false,
                         );
-                        if let Some(recent_sent) = recent_sent {
-                            let due_date: DateTime<Tz> = DateTime::<Utc>::from_utc(recent_sent, Utc).with_timezone(&Japan);
-                            e.field(
-                                "以下の日付を過ぎたら投稿可能です",
-                                format!(
-                                    "{} ({}日後)に宣伝可能",
-                                    due_date.format("%Y年%m月%d日 %H時%M分%S秒"),
-                                    (due_date - now).num_days() + 1,
-                                ),
-                                false,
-                            );
-                        }
-                    } else {
-                        // 直近の自分が宣伝したサーバー (削除済みメッセージ)
-                        let recent = invites
-                            .iter()
-                            .flat_map(move |(_invite_key, records)| records.iter())
-                            .filter(|(record, _invite_link)| record.deleted)
-                            .max_by_key(|(_record, _invite_link)| _record.timestamp);
-                        if let Some((record, _invite_link)) = recent {
-                            let date: DateTime<Tz> = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(record.timestamp, 0), Utc).with_timezone(&Japan);
-                            e.field(
-                                format!("直近{}日間に自分がこのサーバーを宣伝しています", self.app_config.ban_period.day_per_user),
-                                format!(
-                                    "{} ({}日前)に宣伝",
-                                    date.format("%Y年%m月%d日 %H時%M分%S秒"),
-                                    (now - date).num_days(),
-                                ),
-                                false,
-                            );
-                        }
-                        if let Some(recent_sent) = recent_sent {
-                            let due_date: DateTime<Tz> = DateTime::<Utc>::from_utc(recent_sent, Utc).with_timezone(&Japan);
-                            e.field(
-                                "以下の日付を過ぎたら投稿可能です",
-                                format!(
-                                    "{} ({}日後)に宣伝可能",
-                                    due_date.format("%Y年%m月%d日 %H時%M分%S秒"),
-                                    (due_date - now).num_days() + 1,
-                                ),
-                                false,
-                            );
-                        }
+                        // 期限
+                        let due_date: DateTime<Tz> = DateTime::<Utc>::from_utc(due.clone(), Utc).with_timezone(&Japan);
+                        e.field(
+                            "以下の日付を過ぎたら投稿可能です",
+                            format!(
+                                "{} ({}日後)に宣伝可能",
+                                due_date.format("%Y年%m月%d日 %H時%M分%S秒"),
+                                (due_date - now).num_days() + 1,
+                            ),
+                            false,
+                        );
                     }
                     e
                 })
