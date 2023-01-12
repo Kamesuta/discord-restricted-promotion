@@ -242,12 +242,11 @@ impl HistoryLog {
                 AND (
                     (
                         user_id = ?4
-                        AND timestamp < ?5
-                        AND ?6 < timestamp
+                        AND ?5 < timestamp
                     )
                     OR (
                         user_id != ?4
-                        AND ?7 < timestamp
+                        AND ?6 < timestamp
                     )
                 )",
             search_key
@@ -258,8 +257,6 @@ impl HistoryLog {
             .with_context(|| format!("履歴チェック用のSQL文の構築に失敗: {}", query))?;
         // n日前以降を指定
         let ban_period = (Utc::now() - Duration::days(self.ban_period.day)).timestamp();
-        let ban_period_user_start =
-            (Utc::now() - Duration::minutes(self.ban_period.min_per_user_start)).timestamp();
         let ban_period_user_end =
             (Utc::now() - Duration::days(self.ban_period.day_per_user)).timestamp();
         // クエリを実行
@@ -269,7 +266,6 @@ impl HistoryLog {
                 channel_id.to_string(),
                 search_value,
                 user_id.to_string(),
-                ban_period_user_start,
                 ban_period_user_end,
                 ban_period,
             ))
